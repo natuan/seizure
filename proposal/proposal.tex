@@ -1,0 +1,76 @@
+\title{EEG Signals Classification}
+\author{Tuan Nguyen}
+\date{\today}
+
+\documentclass[12pt]{article}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This is the paper's abstract \ldots
+\end{abstract}
+
+\section{Domain Background}
+
+\section{Problem Statement}
+
+The aim of this project is to study the effectiveness of different types of features and classification algorithms on the EEG signals provided with the work by Andrzejak et al.~\cite{andrzejak2001indications}.
+
+Although there were work on learning from this data set, to the best of my knowledge the classification problem were binary (i.e., whether a segment of signals correspond to a patient with seizure or not). Another important distinction between those work and this project is that none of them tried the Deep Belief Networks on this particular data set as a way to extract features.
+
+\section{Data Sets and Inputs}
+
+The data set used in this study is provided with the work by Andrzejak et al.~\cite{andrzejak2001indications}, recording brain electrical activity of five classes of subjects:
+\begin{itemize}
+\item Normal people with eyes open.
+\item Normal people with eyes closed.
+\end{itemize}
+
+\section{Solution Statements}
+
+This project aims to study a combination of feature extraction mechanisms and classification algorithms. The goal is to draw conclusion on the effectiveness of...\textbf{(continued)}
+
+\subsection{Feature extraction}
+The following three types of features are to be used as features of the classifiers.: (1) raw features (i.e., the EEG signals), (2) hand-crafted features and (3) features exatracted using Deep Belief Networks.
+
+\begin{itemize}
+
+\item Raw features: the EEG signals are used directly as features.
+
+\item Hand-crafted features: the EEG signal of each subject will first be divided into segments of 1 second; as suggested by Nigam and Graupe~\cite{nigam2004neural}, the EEG signals is considered stationary within these segments. Several features will then be extracted from each segment:
+      \begin{itemize}
+      \item Summary statistics of segments: min, 25\% percentile, mean, 75\% percentile, max, median.
+      \item Spike based features~\cite{nigam2004neural}: maximum spike amplitude and the number of spikes in each segment.
+      \item Several features described in~\cite{wulsin2011modeling}: area under the curve, normalized decay of data that is increasing or decreasing, line length of the signal, mean energy of the data, peak amplitude, valley amplitude, normalized peak number, peak variation, root mean square and the wavelet energy of the data.
+      \end{itemize}
+
+\item Automatic features: The last type of features are to be learned using Deep Belief Networks (DBNs)~\cite{hinton2006reducing}. The idea of using DBNs for feature extraction has been investigated for different EEG data sets in previous work such as ~\cite{langkvist2012sleep} and ~\cite{wulsin2011modeling}.
+
+\end{itemize}
+\subsubsection{Deep Belief Network based features}
+
+\subsection{Classification}
+
+
+
+\subsubsection{Logistic regression}
+
+\subsubsection{Decision trees}
+
+\subsubsection{K-Nearest neighbors}
+
+\subsubsection{Support vector machines}
+
+\subsubsection{Feedforward multi-layer neural networks}
+
+\section{Benchmark Model}
+
+\section{Evaluation Metrics}
+
+\section{Project Design}
+
+\bibliographystyle{abbrv}
+\bibliography{proposal}
+
+\end{document}
