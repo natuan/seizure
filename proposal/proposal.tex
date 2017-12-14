@@ -1,4 +1,4 @@
-\title{EEG Signals Classification}
+\title{A Comparative Study of Feature Extraction and Classification for EEG Epileptic Seizures Signals}
 \author{Tuan Nguyen}
 \date{\today}
 
@@ -9,14 +9,10 @@
 \begin{document}
 \maketitle
 
-\begin{abstract}
-This is the paper's abstract \ldots
-\end{abstract}
-
 \section{Domain Background}
 
 \noindent
-The domain of interest in this project belongs to physiological data such as electroencephalography (EEG), magnetoencephalography (MEG), electrocardiography (ECG) and the recorded signals from wearable devices. This project focuses on the EEG signals, which capture activities of brain neurons during a period of time. Different kinds of EEG data has been recorded from humans, for instance from those at rest, sleep, during some periods of specific cognitive activity, or from patients with diseases such as Alzheimer's, Parkinson's, depression and epileptic seisures. 
+The domain of interest of this project belongs to physiological data such as electroencephalography (EEG), magnetoencephalography (MEG), electrocardiography (ECG) and the recorded signals from wearable devices. This project focuses on the EEG signals, which capture activities of brain neurons during a period of time. Different kinds of EEG data has been recorded from humans, for instance from those at rest, sleep, during some periods of specific cognitive activity, or from patients with diseases such as Alzheimer's, Parkinson's, depression and epileptic seisures. 
 
 
 This project studies the classification problem on an EEG data set recorded from healthy volunteers and patients having epileptic seizures, provided with the work by Andrzejak et al.~\cite{andrzejak2001indications}. The purpose is to examine the effectiveness of using machine learning to automatically recognize types of human subjects given their corresponding segments of EEG signals. 
@@ -25,11 +21,11 @@ This project studies the classification problem on an EEG data set recorded from
 
 The aim of this project is to study the effectiveness of combining different types of feature extraction mechanisms and classification algorithms on the above mentioned EEG data set~\cite{andrzejak2001indications}. In particular, it considers using raw features, hand-crafted features and features automatically learned using Deep Belief Networks~\cite{hinton2006reducing} as input to popular machine learning classifiers. The goal is to classify segments of EEG signals into one of the five target classes of subjects.
 
-Much work has been done deriving hand-crafted features for EEG data sets (including for the one of interest in this project), for instance information about signal spikes~\cite{nigam2004neural}, geometric and shape information~\cite{wulsin2011modeling}. While many of these designed features already provided high accuracy results, they were used for the binary classification problem only (i.e., detecting whether a signal segment indicates seizure or not). Their effectiveness in distinguishing similar classes such as A and B (i.e., healthy subjects with open and closed eyes), and therefore in classifying the five target classes, is unclear. This project first aims to answer this question.
+Much work has been done deriving hand-crafted features for EEG data sets (including for the one of interest in this project), for instance information about signal spikes~\cite{nigam2004neural}, geometric and shape information~\cite{wulsin2011modeling}. While many of these designed features already provided high accuracy results, they were used for the binary classification problem only (i.e., detecting whether a signal segment indicates seizure or not). Their effectiveness in distinguishing similar classes such as healthy subjects with open and closed eyes, and therefore in classifying the five target classes, is unclear. This project first aims to answer this question.
 
 The second objective of this project is to examine the power of Deep Belief Networks in extracting features for the data set. While this network has been used to reduce data dimensionality~\cite{hinton2006reducing} and extract features for EEG data sets (c.f. ~\cite{langkvist2012sleep}, \cite{wang2013modeling}, \cite{wulsin2011modeling}), to the best of my knowledge it has not been applied to the data set provided by Andrzejak et al.~\cite{andrzejak2001indications}. It is therefore unclear whether Deep Belief Networks can be an effective tool in learning features for this data set.
 
-Finally, the three types of features will be tested with several classifiers, in particular the decision trees, K-nearest neighbor, Support Vector Machines and feedforward multi-layer neural networks. The goal is that given a segment of EEG signals, the output will be one of the five sets of subjects to which the segment belongs. The accuracy of different combinations of feature sets and classifiers is the measure to be observed.
+Finally, the three types of features will be tested with several classifiers, in particular the Decision Trees, K-Nearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks. The goal is that given a segment of EEG signals, the output will be one of the five sets of subjects to which the segment belongs. The accuracy of different combinations of feature sets and classifiers is the main performace measure.
 
 \section{Data Sets and Inputs}
 
@@ -39,17 +35,17 @@ The data set used in this study is provided with the work by Andrzejak et al.~\c
 \item Set B: healthy volunteers in relaxed state with eyes closed.
 \item Set D: epilepsy patients during seizure-free periods; the electrodes were implanted to record brain activity from within the epileptogenic zone.
 \item Set C: epilepsy patients during seizure-free periods; the electrodes were implanted from the opposite hemisphere of the brain (compared to those in Set D).
-\item Set E: same patients with sets C and D but activity were recorded from all electrodes during active seizure.
+\item Set E: same patients with sets C and D but activity were recorded from all electrodes during active seizures.
 \end{itemize}
 
-For each set of volunteers above, the data set contains 100 single-channel EEG segments of 23.6-sec duration. For this project each of these segments will be further divided into smaller segments of 1-sec durations, which are considered stationary for EEG data~\cite{nigam2004neural}. Each 1-sec duration become a sample, and the corresponding volunteer set becomes the target to be classified. A version of this data set after such preprocessing step was provided by Wu and Fokoue~\cite{UCISeizure} and will be used for this project. 
+For each set of volunteers above, the data set contains 100 single-channel EEG segments of 23.6-sec duration. For this project each of these segments will be further divided into smaller segments of 1-sec durations, which are considered stationary for EEG data~\cite{nigam2004neural}. Each 1-sec duration become a sample, and the corresponding volunteer set becomes the target to be classified. A version of this data set after such a preprocessing step was provided by Wu and Fokoue~\cite{UCISeizure} and will be used for this project. 
 
 \section{Solution Statements}
 
 The project has two main parts: feature extraction/learning and classification, described briefly in the following subsections.
 
 \subsection{Feature extraction}
-The following three types of features are to be used as features of the classifiers.: (1) raw features (i.e., the EEG signals), (2) hand-crafted features and (3) features exatracted using Deep Belief Networks.
+The following three types of features are to be used as features of the classifiers: (1) raw features (i.e., the EEG signals), (2) hand-crafted features and (3) features exatracted using Deep Belief Networks.
 
 \begin{itemize}
 
@@ -59,7 +55,7 @@ The following three types of features are to be used as features of the classifi
       \begin{itemize}
       \item Summary statistics of segments: min, 25\% percentile, mean, 75\% percentile, max, median.
       \item Spike based features~\cite{nigam2004neural}: maximum spike amplitude and the number of spikes in each segment.
-      \item Several features described in~\cite{wulsin2011modeling}: area under the curve, normalized decay of data that is increasing or decreasing, line length of the signal, mean energy of the data, peak amplitude, valley amplitude, normalized peak number, peak variation, root mean square and the wavelet energy of the data.
+      \item Features described in~\cite{wulsin2011modeling}: area under the curve, normalized decay of data that is increasing or decreasing, line length of the signal, mean energy of the data, peak amplitude, valley amplitude, normalized peak number, peak variation, root mean square and the wavelet energy of the data.
       \end{itemize}
 
 \item Automatic features: The last type of features are to be learned using Deep Belief Networks (DBNs)~\cite{hinton2006reducing}. The idea of using DBNs for feature extraction has been investigated for different physicological data sets in previous work such as ~\cite{langkvist2012sleep} and ~\cite{wulsin2011modeling}, but not for this data set (to the best of my knowledge). I intend to construct Deep Belief Networks from a stack of restricted Boltzmann machines and train them on the set of 1-sec segments mentioned above, resulting in features that can then be used for classification. The training phase would be done using contrastive divergence as described by Hinton~\cite{hinton2006training}.
@@ -68,17 +64,25 @@ The following three types of features are to be used as features of the classifi
 
 \subsection{Classification}
 
-The three types of features extracted and learned are then used as input features to several classifiers. The following classifiers are considered: decision trees, K-nearest neighbors, Support Vector Machines and feedforward multi-layer neural networks (potentially with Dropout layers).
+The three types of features extracted and learned are then used as input features to several classifiers. The following classifiers are considered: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks (potentially with Dropout layers~\cite{srivastava2014dropout}).
 
 \section{Benchmark Model}
 
-There were several work that aimed to detect seizure patients from the EEG signals in this data set using different hand-chosen features (c.f.~\cite{nigam2004neural}, \cite{kabir2016epileptic}) with excellent accuracy performance. None of them, however, attempted to recognize all five classes of EEG signals from different group of volunteers. Wulsin et al.~\cite{wulsin2011modeling} classified second-long segments of EEG signals into ``clinically significant'' EEG classes (on the different data set). This work also used Deep Belief Networks to extract features, in the same direction that this project is aiming at.
+There were several work that aimed to detect seizure patients from the EEG signals in this data set using different hand-chosen features (c.f.~\cite{nigam2004neural}, \cite{kabir2016epileptic}) with excellent accuracy performance. None of them, however, attempted to recognize all five classes of EEG signals from different group of volunteers. On a different data set, Wulsin et al.~\cite{wulsin2011modeling} learned features of second-long segments of EEG signals using DBNs and classified them into ``clinically significant'' EEG classes. Unfortunately, the results from these work cannot be used to compare directly with that of this project. This project, however, aims to compare different combination of feature extraction mechanisms and classification algorithms on the data set~\cite{andrzejak2001indications}, which is an interesting problem by itself.
 
 \section{Evaluation Metrics}
 
-The accuracy in predicting the volunteer class for 1-sec segments is the main evaluation metrics for this classification task.
+The accuracy (i.e., the percentage of samples with correctly predicted target class) in predicting the volunteer classes for 1-sec segments is the main evaluation metric that will be used for this classification task.
 
 \section{Project Design}
+
+I plan to perform the following stages to accomplish this project:
+\begin{enumerate}
+\item Data preprocessing: the UCI version of the data set~\cite{UCISeizure} will be used in this project. Twenty percents of the data set will be randomly selected and used as the test set. The remaining will be used for training.
+\item Feature extraction: a module will be implemented to extract and learn different types of features as mentioned above.
+\item Classification: classification module will be implemented to take input features and classify samples into one of the five classes, using different classification algorithms as mentioned above. Cross-validation will be used to choose hyper-parameters for learning algorithms if needed.
+\item Observation and reporting: important design choices and their experimental results will be observed, recorded and reported in a comprehensive project document.
+\end{enumerate}
 
 \bibliographystyle{abbrv}
 \bibliography{proposal}
