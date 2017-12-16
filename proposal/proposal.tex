@@ -1,4 +1,4 @@
-\title{A Comparative Study of Feature Extraction and Classification for EEG Epileptic Seizures Signals}
+\title{Epileptic Seizure Detection from EEG Signals with Deep Belief Networks}
 \author{Tuan Nguyen}
 \date{\today}
 
@@ -13,7 +13,6 @@
 
 \noindent
 The domain of interest of this project belongs to physiological data such as electroencephalography (EEG), magnetoencephalography (MEG), electrocardiography (ECG) and the recorded signals from wearable devices. This project focuses on the EEG signals, which capture activities of brain neurons during a period of time. Different kinds of EEG data has been recorded from humans, for instance from those at rest, sleep, during some periods of specific cognitive activity, or from patients with diseases such as Alzheimer's, Parkinson's, depression and epileptic seisures. 
-
 
 This project studies the classification problem on an EEG data set recorded from healthy volunteers and patients having epileptic seizures, provided with the work by Andrzejak et al.~\cite{andrzejak2001indications}. The purpose is to examine the effectiveness of using machine learning to automatically recognize types of human subjects given their corresponding segments of EEG signals. 
 
@@ -76,13 +75,21 @@ The accuracy (i.e., the percentage of samples with correctly predicted target cl
 
 \section{Project Design}
 
-I plan to perform the following stages to accomplish this project:
-\begin{enumerate}
-\item Data preprocessing: the UCI version of the data set~\cite{UCISeizure} will be used in this project. Twenty percents of the data set will be randomly selected and used as the test set. The remaining will be used for training.
-\item Feature extraction: a module will be implemented to extract and learn different types of features as mentioned above.
-\item Classification: classification module will be implemented to take input features and classify samples into one of the five classes, using different classification algorithms as mentioned above. Cross-validation will be used to choose hyper-parameters for learning algorithms if needed.
-\item Observation and reporting: important design choices and their experimental results will be observed, recorded and reported in a comprehensive project document.
-\end{enumerate}
+\subsection{Step 1: Data Preprocessing}
+
+Use the data from UCI Seizure~\cite{UCISeizure}
+
+Split into train-test (80/20)
+
+Normalize the inputs in the training set, each input vector contains value from [0,1] (Sigmoid unit will be used)
+
+\subsection{Step 2: Design and training individual restricted Boltzman machines}
+
+Design choices to make:
+\begin{itemize}
+\item Type of visible and hidden units: sigmoid
+\item Configuration of machines: 
+\end{itemize}
 
 \bibliographystyle{abbrv}
 \bibliography{proposal}
