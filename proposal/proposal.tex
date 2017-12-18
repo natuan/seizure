@@ -23,20 +23,11 @@ This project studies the classification problem on an EEG data set recorded from
 This project aims to classify 1-sec long EEG segments into one of the three classes: (1) healthy volunteers, (2) patients with epileptic seizures disease during seizure-free periods, and (3) patients with the disease during active seizure periods. It can be formally defined as follows.
 
 \begin{itemize}
-\item \textbf{Input:} training set $X = \langle \myvec{x}_1, \myvec{x}_2, ..., \myvec{x}_N\rangle$ of $N$ samples, where $\myvec{x}_i$ is a vector of $M$ electrical voltage values recorded in one second by an electrode at a specific point and time; target vector $y = \langle y_1, y_2, ..., y_N \rangle$ where $y_i \in \{1, 2, 3\}$ is the type of volunteers which the sample $\myvec{x}_i$ belong to. In the data set~\cite{andrzejak2001indications}, the targets $1, 2, 3$ respectively correspond to sets of volunteers $A + B$, $C + D$ and $E$ (see details in Section~\ref{sec:data_set}).
+\item \textbf{Input:} training set $X = \langle \myvec{x}_1, \myvec{x}_2, ..., \myvec{x}_N\rangle$ of $N$ samples, where $\myvec{x}_i$ is a vector of $M$ electrical voltage values recorded in one second by an electrode at a specific point and time; target vector $y = \langle y_1, y_2, ..., y_N \rangle$ where $y_i \in \{1, 2, 3\}$ is the type of volunteers which the sample $\myvec{x}_i$ belong to. In the data set~\cite{andrzejak2001indications}, the targets $1, 2, 3$ respectively correspond to sets of volunteers $A + B$, $C + D$ and $E$.
 \item \textbf{Output:} a hypothesis $f$ classifying a sample of $M$ electrical voltage values into one of the volunteer classes $\{1, 2, 3\}$.
 \end{itemize}
 
-The quality of the returned hypothesis is evaluated with an independent test set, created by $20\%$ of the given data set. 
-
-======
-The aim of this project is to study the effectiveness of combining different types of feature extraction mechanisms and classification algorithms on the above mentioned EEG data set~\cite{andrzejak2001indications}. In particular, it considers using raw features, hand-crafted features and features automatically learned using Deep Belief Networks~\cite{hinton2006reducing} as input to popular machine learning classifiers. The goal is to classify segments of EEG signals into one of the five target classes of subjects.
-
-Much work has been done deriving hand-crafted features for EEG data sets (including for the one of interest in this project), for instance information about signal spikes~\cite{nigam2004neural}, geometric and shape information~\cite{wulsin2011modeling}. While many of these designed features already provided high accuracy results, they were used for the binary classification problem only (i.e., detecting whether a signal segment indicates seizure or not). Their effectiveness in distinguishing similar classes such as healthy subjects with open and closed eyes, and therefore in classifying the five target classes, is unclear. This project first aims to answer this question.
-
-The second objective of this project is to examine the power of Deep Belief Networks in extracting features for the data set. While this network has been used to reduce data dimensionality~\cite{hinton2006reducing} and extract features for EEG data sets (c.f. ~\cite{langkvist2012sleep}, \cite{wang2013modeling}, \cite{wulsin2011modeling}), to the best of my knowledge it has not been applied to the data set provided by Andrzejak et al.~\cite{andrzejak2001indications}. It is therefore unclear whether Deep Belief Networks can be an effective tool in learning features for this data set.
-
-Finally, the three types of features will be tested with several classifiers, in particular the Decision Trees, K-Nearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks. The goal is that given a segment of EEG signals, the output will be one of the five sets of subjects to which the segment belongs. The accuracy of different combinations of feature sets and classifiers is the main performace measure.
+The formation of the training set $X$ and target $y$ is discussed in Section~\ref{sec:data_set}. This project explores the usage of Deep Belief Networks for learning features of the training set $X$ and popular learning models (Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks) for classification (see Section~\ref{sec:solution}). Several metrics are used to evaluate the classifiers, discussed in Section~\ref{sec:metric}.
 
 \section{Data Sets and Inputs}
 \label{sec:data_set}
@@ -49,41 +40,30 @@ The data set used in this study is provided with the work by Andrzejak et al.~\c
 \item Set E: same patients with sets C and D but activity were recorded from all electrodes during active seizures.
 \end{itemize}
 
-For each set of volunteers above, the data set contains 100 single-channel EEG segments of 23.6-sec duration. For this project each of these segments will be further divided into smaller segments of 1-sec durations, which are considered stationary for EEG data~\cite{nigam2004neural}. Each 1-sec duration become a sample, and the corresponding volunteer set becomes the target to be classified.
+For each set of volunteers above, the data set contains 100 single-channel EEG segments of 23.6-sec duration. For this project each of these segments is divided into smaller segments of one second durations, which are considered stationary for EEG data~\cite{nigam2004neural}. These one second durations together define the training set $X$ in the problem statement, and the three sets of volunteers $A + B$, $C + D$ and $E$ define the target vector $y$ in the problem statement above.
 
 \section{Solution Statements}
+\label{sec:solution}
 
-The project has two main parts: feature extraction/learning and classification, described briefly in the following subsections.
-
-\subsection{Feature extraction}
-The following three types of features are to be used as features of the classifiers: (1) raw features (i.e., the EEG signals), (2) hand-crafted features and (3) features exatracted using Deep Belief Networks.
-
+This project aims to propose an instance of DBNs that can learn to extract features of the training set $X$ for the purpose of classifying new sample of EEG segments. The network consists of a sequence of stacked Boltzman machines restricted to have symmetric connections between the input layer and the only output layer~\cite{hinton2006training}. This restriction enables individual Boltzman machines and the entire network to be trained in the following fashion:
 \begin{itemize}
-
-\item Raw features: the EEG signals are used directly as features.
-
-\item Hand-crafted features: the EEG signal of each subject will first be divided into segments of 1 second; as suggested by Nigam and Graupe~\cite{nigam2004neural}, the EEG signals is considered stationary within these segments. Several features will then be extracted from each segment:
-      \begin{itemize}
-      \item Summary statistics of segments: min, 25\% percentile, mean, 75\% percentile, max, median.
-      \item Spike based features~\cite{nigam2004neural}: maximum spike amplitude and the number of spikes in each segment.
-      \item Features described in~\cite{wulsin2011modeling}: area under the curve, normalized decay of data that is increasing or decreasing, line length of the signal, mean energy of the data, peak amplitude, valley amplitude, normalized peak number, peak variation, root mean square and the wavelet energy of the data.
-      \end{itemize}
-
-\item Automatic features: The last type of features are to be learned using Deep Belief Networks (DBNs)~\cite{hinton2006reducing}. The idea of using DBNs for feature extraction has been investigated for different physicological data sets in previous work such as ~\cite{langkvist2012sleep} and ~\cite{wulsin2011modeling}, but not for this data set (to the best of my knowledge). I intend to construct Deep Belief Networks from a stack of restricted Boltzmann machines and train them on the set of 1-sec segments mentioned above, resulting in features that can then be used for classification. The training phase would be done using contrastive divergence as described by Hinton~\cite{hinton2006training}.
-
+\item \textit{Pretraining}: the Boltzman machines in the stack are trained sequentially one at a time to minimize the difference between the input and output (or its reconstructed values); the learned feature activations of one RBM becomes the input of the one right above (the first machine of the stack has the raw training EEG segments as inputs).
+\item \textit{Fine-tunig}: the stacked of restricted Boltzman machines are unrolled to form separate the two encoder and decoder parts; back-propagation is then used to fine tune the network, starting from the weights obtained during the pretrainning period.
 \end{itemize}
 
-\subsection{Classification}
-
-The three types of features extracted and learned are then used as input features to several classifiers. The following classifiers are considered: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks (potentially with Dropout layers~\cite{srivastava2014dropout}).
+After the feature learning phase above, the output of the encoder of the network is considered the features representing the training set $X$. They are then used as input features of popular classification algorithms. This work considers the following classifiers: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks. The hypothesis here is that the features learned automatically using DBNs, together with one of these classifiers, provides comparable performance compared to the previous work (see Section~\ref{sec:benchmark}).
 
 \section{Benchmark Model}
-
+\label{sec:benchmark}
 There were several work that aimed to detect seizure patients from the EEG signals in this data set using different hand-chosen features (c.f.~\cite{nigam2004neural}, \cite{kabir2016epileptic}) with excellent accuracy performance. None of them, however, attempted to recognize all five classes of EEG signals from different group of volunteers. On a different data set, Wulsin et al.~\cite{wulsin2011modeling} learned features of second-long segments of EEG signals using DBNs and classified them into ``clinically significant'' EEG classes. Unfortunately, the results from these work cannot be used to compare directly with that of this project. This project, however, aims to compare different combination of feature extraction mechanisms and classification algorithms on the data set~\cite{andrzejak2001indications}, which is an interesting problem by itself.
 
 \section{Evaluation Metrics}
+\label{sec:metric}
+The quality of the returned hypothesis is evaluated with an independent test set, created by $20\%$ of the given data set. The following measures are used to evaluate the performance of different classifiers:
+\begin{itemize}
+\item Sensitivity (or recall): the number of positive 
+\end{itemize}
 
-The accuracy (i.e., the percentage of samples with correctly predicted target class) in predicting the volunteer classes for 1-sec segments is the main evaluation metric that will be used for this classification task.
 
 \section{Project Design}
 
