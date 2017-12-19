@@ -1,4 +1,4 @@
-\title{Epileptic Seizure Detection from EEG Signals with Deep Belief Networks}
+\title{Epileptic Seizure Detection from EEG Signals with Autoencoded Features}
 \author{Tuan Nguyen}
 \date{\today}
 
@@ -14,20 +14,20 @@
 \section{Domain Background}
 
 \noindent
-The domain of interest of this project belongs to physiological data such as electroencephalography (EEG), magnetoencephalography (MEG), electrocardiography (ECG) and the recorded signals from wearable devices. This project focuses on the EEG signals, which capture activities of brain neurons during a period of time. Different kinds of EEG data has been recorded from humans, for instance from those at rest, sleep~\cite{langkvist2012sleep}, during some periods of specific cognitive activity, or from patients with diseases such as Alzheimer's, Parkinson's, depression and epileptic seisures (\cite{andrzejak2001indications} and references thereof).
+The domain of interest of this project belongs to physiological data such as electroencephalography (EEG), magnetoencephalography (MEG), electrocardiography (ECG) and the recorded signals from wearable devices. This project focuses on the EEG signals, which capture activities of brain neurons during a period of time. Different kinds of EEG data has been recorded from humans, for instance from those at rest, sleep~\cite{langkvist2012sleep}, during some periods of specific cognitive activities, or from patients with diseases such as Alzheimer's, Parkinson's, depression and epileptic seisures (\cite{andrzejak2001indications} and references thereof).
 
-This project studies the classification problem on an EEG data set recorded from healthy volunteers and patients having epileptic seizures; solutions for this problem could be used to assist with detecting patients with the disease from their brain activity signals. Previous work on this data set focused mainly on extracting hand-crafted features to be used for classification. As examples, Nigam and Graupe \cite{nigam2004neural} extracted two the spike amplitudes and frequency of the signals, feeding them into a neural network for classification; Guler et al.~\cite{guler2005recurrent} applied wavelet transform to the signal to extract features, and classification was performed using neuro-fuzzy system; \cite{kannathal2005entropies} extracted entropy-based features for classification. This project, on the other hand, learns features representing the EEG signals automatically using Deep Belief Networks (DBNs)~\cite{hinton2006reducing}, and then use them for classification.
+This project studies the classification problem on an EEG data set recorded from healthy volunteers and patients having epileptic seizures; solutions for this problem could be used to assist with detecting patients with the disease from their brain activity signals. Previous work on this data set focused mainly on extracting hand-crafted features to be used for classification. As examples, Nigam and Graupe \cite{nigam2004neural} extracted the spike amplitudes and frequency of the signals, feeding them into a neural network for classification; Guler et al.~\cite{guler2005recurrent} applied wavelet transformation to the signals to extract features, and classification was performed using a neuro-fuzzy system; Kannathal et al.~\cite{kannathal2005entropies} extracted entropy-based features for classification. This project, on the other hand, explores a type of autoencoders (e.g., ~\cite{bengio2007greedy}, \cite{vincent2010stacked}, \cite{boureau2008sparse}, \cite{kingma2013auto}) in order to learn features representing the EEG signals and then use them for classification.
 
 \section{Problem Statement}
 \noindent
-This project aims to classify 1-sec long EEG segments into one of the three classes: (1) healthy volunteers, (2) patients with epileptic seizures disease during seizure-free periods, and (3) patients with the disease during active seizure periods. It can be formally defined as follows.
+This project aims to classify 1-second long EEG segments into one of the three classes: (1) healthy volunteers, (2) patients with epileptic seizures disease during seizure-free periods, and (3) patients with the disease during active seizure periods. It can be formally defined as follows.
 
 \begin{itemize}
 \item \textbf{Input:} training set $X = \langle \myvec{x}_1, \myvec{x}_2, ..., \myvec{x}_N\rangle$ of $N$ samples, where $\myvec{x}_i$ is a vector of $M$ electrical voltage values recorded in one second by an electrode at a specific point and time; target vector $y = \langle y_1, y_2, ..., y_N \rangle$ where $y_i \in \{1, 2, 3\}$ is the type of volunteers which the sample $\myvec{x}_i$ belong to. In the data set~\cite{andrzejak2001indications}, the targets $1, 2, 3$ respectively correspond to sets of volunteers $A + B$, $C + D$ and $E$.
 \item \textbf{Output:} a hypothesis $f$ classifying a sample of $M$ electrical voltage values into one of the volunteer classes $\{1, 2, 3\}$.
 \end{itemize}
 
-The formation of the training set $X$ and target $y$ is discussed in Section~\ref{sec:data_set}. This project explores the usage of Deep Belief Networks for learning features of the training set $X$ and popular learning models (Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks) for classification (see Section~\ref{sec:solution}). Several metrics are used to evaluate the classifiers, discussed in Section~\ref{sec:metric}.
+The formation of the training set $X$ and target $y$ is discussed in Section~\ref{sec:data_set}. This project explores one of the following autoencoders for learning features of the training set $X$: ordinary autoencoders~\cite{bengio2007greedy}, denoising autoencoder~\cite{vincent2010stacked}, sparse autoencoder\cite{boureau2008sparse} and variational autoencoders \cite{kingma2013auto}. The extracted features are then tested with popular learning models (Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks) for classification (see Section~\ref{sec:solution}). Several metrics are used to evaluate the classifiers, discussed in Section~\ref{sec:metric}.
 
 \section{Data Sets and Inputs}
 \label{sec:data_set}
@@ -45,43 +45,60 @@ For each set of volunteers above, the data set contains 100 single-channel EEG s
 \section{Solution Statements}
 \label{sec:solution}
 
-This project aims to propose an instance of DBNs that can learn to extract features of the training set $X$ for the purpose of classifying new sample of EEG segments. The network consists of a sequence of stacked Boltzman machines restricted to have symmetric connections between the input layer and the only output layer~\cite{hinton2006training}. This restriction enables individual Boltzman machines and the entire network to be trained in the following fashion:
-\begin{itemize}
-\item \textit{Pretraining}: the Boltzman machines in the stack are trained sequentially one at a time to minimize the difference between the input and output (or its reconstructed values); the learned feature activations of one RBM becomes the input of the one right above (the first machine of the stack has the raw training EEG segments as inputs).
-\item \textit{Fine-tunig}: the stacked of restricted Boltzman machines are unrolled to form separate the two encoder and decoder parts; back-propagation is then used to fine tune the network, starting from the weights obtained during the pretrainning period.
-\end{itemize}
+This project aims to use a type of autoencoders (~\cite{bengio2007greedy}, \cite{vincent2010stacked}, \cite{boureau2008sparse}, \cite{kingma2013auto}) that can learn to extract features of the training set $X$ for the purpose of classifying new sample of EEG segments. I propose to first try ordinary stacked autoencoders~\cite{bengio2007greedy}; the other autoencoders will be explored depending on the performance of the first one on this data set.
 
-After the feature learning phase above, the output of the encoder of the network is considered the features representing the training set $X$. They are then used as input features of popular classification algorithms. This work considers the following classifiers: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks. The hypothesis here is that the features learned automatically using DBNs, together with one of these classifiers, provides comparable performance compared to the previous work (see Section~\ref{sec:benchmark}).
+An ordinary autoencoder~\cite{bengio2007greedy} is a regular neural network which consists of the input layer, one hidden layer and the output layer such that the input and output layers have the same number of neurons. The first (lowest) autoencoder on the stack is trained to minimize the difference, defined for instance as the mean squared error, between the input batches of EEG segments and their output activations. The output activation of the hidden layer becomes the input to the second autoencoder on the stack, which is trained also to minimize the difference between its input and output layers. This process of adding more autoencoders continues in that fashion. Finally, the output layer of the entire stack is the output of the first autoencoder. The stacked autoencoders is therefore symmetrical with regard to the middle hidden layer: the first lower half acts as the encoder while the second higher half of the stack as the decoder. The output activations of the middle layer thus act as encoded features of the training set of EEG segments.
+
+Depending on the performance of the above autoencoder in classifying the target classes of volunteers, I might also plan to train a stack of denoising autoencoders~\cite{vincent2010stacked} to extract features for the data set. At high level, this stack is much like the ordinary one except for the Gaussian noises added into the input layer, forcing the decoder to learn more meaningful features, potentially improve the performance in classification.
+
+After the feature learning phase above, the output of the coding layer the network is considered the features representing the training set $X$. They are then used as input features of popular classification algorithms. This work considers the following classifiers: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks. The hypothesis here is that the features learned automatically using autoencoders, together with one of these classifiers, provides comparable performance compared to the previous work (see Section~\ref{sec:benchmark}).
 
 \section{Benchmark Model}
 \label{sec:benchmark}
-There were several work that aimed to detect seizure patients from the EEG signals in this data set using different hand-chosen features (c.f.~\cite{nigam2004neural}, \cite{kabir2016epileptic}) with excellent accuracy performance. None of them, however, attempted to recognize all five classes of EEG signals from different group of volunteers. On a different data set, Wulsin et al.~\cite{wulsin2011modeling} learned features of second-long segments of EEG signals using DBNs and classified them into ``clinically significant'' EEG classes. Unfortunately, the results from these work cannot be used to compare directly with that of this project. This project, however, aims to compare different combination of feature extraction mechanisms and classification algorithms on the data set~\cite{andrzejak2001indications}, which is an interesting problem by itself.
+
+Several previous work has been developed for the classification problem on the same data set~\cite{andrzejak2001indications}; the main contribution of most of these work, however, were on designing various hand-crafted features for the EEG signals. They might also be different from each other in the target classes of interest. As examples, Nigam and Graupe~\cite{nigam2004neural} used two features based on the spike information of the signals for further learning and detecting patients in set $E$ (thus, binary classification problem). Kabir et al.~\cite{kabir2016epileptic} extracted statistical features based on ``optimum allocation technique'' to be used with logistic model trees for classifying volunteers into the three classes that are of interest of this project. Guler et al.~\cite{guler2005recurrent} employed Lyapunov exponents based features for classification using recurrent neural networks where the target classes are three sets $A$, $D$ and $E$. On another data set, Wulsin et al.~\cite{wulsin2011modeling} learned features of second-long segments of EEG signals using Deep Belief Networks~\cite{hinton2006reducing} and classified them into ``clinically significant'' EEG classes. To the best of my knowledge, there was no previous work reporting the results of using autoencoders for the data set that this project is interested in.
+
+The proposed method by Kabir et al.~\cite{kabir2016epileptic} on the data set of interest in this project outperforms many the state-of-the-art approaches using the same data set; among many other measures, the total accuracy of their approach was $95.3\%$. Since its target classes are the same with those of interest in this project, and their work represents a class of work using hand-crafted features, in my opinion it is reasonable to use the performance of their work as the baseline for the approach to be explored in this project. The hypothesis is that by using autoencoders, it is possible to learn a set of features automatically for classifying EEG signals with comparable results. The next section discusses measures to evaluate performance of classifiers in this domain.
 
 \section{Evaluation Metrics}
 \label{sec:metric}
 The quality of the returned hypothesis is evaluated with an independent test set, created by $20\%$ of the given data set. The following measures are used to evaluate the performance of different classifiers:
 \begin{itemize}
-\item Sensitivity (or recall): the number of positive 
-\end{itemize}
+\item F1 score: this measure combines both the precision and recall as follows
 
+\[
+F_1 = 2 \times \frac{precision \times recall}{precision + recall}.
+\]
+\item Total accuracy: the total number of samples classified into the correct classes, which is still the most common measure used in practice.
+\item Classification time: as suggested by Wulsin et al.~\cite{wulsin2011modeling}, this measure is important for applications monitoring EEG signals of patients in real time.
+\end{itemize}
 
 \section{Project Design}
 
-\subsection{Step 1: Data Preprocessing}
+The project will go through the following stages. (Although the purpose and the direction of the project are fixed, the steps during the actual implementation might change.)
 
-Use the data from UCI Seizure~\cite{UCISeizure}
+\subsection{Data Preparation}
 
-Split into train-test (80/20)
-
-Normalize the inputs in the training set, each input vector contains value from [0,1] (Sigmoid unit will be used)
-
-\subsection{Step 2: Design and training individual restricted Boltzman machines}
-
-Design choices to make:
+The data set~\cite{andrzejak2001indications} contains 100 channels (or vector of voltage values) for each of the five sets of volunteers. Each channel is a vector of 4097 values that are EEG signals recorded in 23.6 seconds. The data set will be preprocessed as follows.
 \begin{itemize}
-\item Type of visible and hidden units: sigmoid
-\item Configuration of machines: 
+\item Each channel is divided into 23 segments with equal length, each contains 178 values. These segments are marked with the target value $0$, $1$ or $2$ for the classes $A + B$, $C + D$ and $E$ of the original channel.
+\item The resulting set of segments are splitted into training and test set (using StratifiedShuffleSplit function from Scikit-Learn).
+\item The resulting set of segments in the training set are then normalized so that the values of EEG signals are in between $[0,1]$.
 \end{itemize}
+
+\subsection{Designing and training individual autoencoder}
+
+There are several design choices to make in designing the autoencoders:
+\begin{itemize}
+\item Number of autoencoders in the stack: this is a hyperparameter that needs to be searched for (through for instance cross-validation). I plan to start with $2$ to $4$ autoencoders.
+\item Activation functions: sigmoid would be used for the output layer; for hidden layers, I plan to try the Exponential Linear Units (ELU)~\cite{clevert2015fast}.
+\item Regularization: I plan to use L2 regularizer.
+\end{itemize}
+
+\subsection{Classifying EEG segments using extracted features}
+
+Given the extracted features obtained from the previous stage, it is not clear which classifier would be the best in classifying EEG segments into the target classes. I propose to test the following classification algorithms: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks (potentially with Dropout~\cite{srivastava2014dropout}).
+
 
 \bibliographystyle{abbrv}
 \bibliography{proposal}
