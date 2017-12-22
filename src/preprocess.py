@@ -13,8 +13,10 @@ INPUT_DIR = os.path.join("..", "input")
 def read_channel_file(file_path):
     """
     Read a single channel given a full path file
+
     Param:
     - file_path: full path file name
+
     Return: 
     - channel: a numpy array of CHANNEL_LENGTH elements
     """
