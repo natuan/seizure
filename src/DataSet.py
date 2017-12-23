@@ -2,6 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.preprocessing import MinMaxScaler
+
 class DataSet:
     
     def __init__(self, input_dir):
@@ -24,6 +27,14 @@ class DataSet:
                            "D": 1,
                            "E": 2}
         self.segment_data = self.create_segment_data() # use the number of segments and target map above
+        self.X_train = None
+        self.y_train = None
+        self.X_test = None
+        self.y_test = None
+
+        self.min_max_scaler = None
+        self.X_train_scaled = None
+        self.X_test_scaled = None
         
     def read_channel_file(self, folder_name, file_name):
         """
@@ -100,8 +111,8 @@ class DataSet:
         within the channel from which the segment was extracted; values are numpy array of length num_features is 
         (channel_length / num_segments_per_channel) + 1 (the last feature is the target set name)
         """
-        self.num_segments_per_channel = num_segments_per_channel if num_segments_per_channel is not None
-        self.target_map = target_map if target_map is not None
+        self.num_segments_per_channel = num_segments_per_channel if num_segments_per_channel is not None else self.num_segments_per_channel
+        self.target_map = target_map if target_map is not None else self.target_map
         num_segments = 5 * self.num_channels_per_set * self.num_segments_per_channel
         num_features = int(self.channel_length / self.num_segments_per_channel) + 1  # including the target feature in the last position
         segment_data = {}
@@ -115,3 +126,29 @@ class DataSet:
                     key_name = s + "_" + file_name + "_" + str(start)
                     segment_data[key_name] = np.append(channel[start : end], self.target_map[s])
         return segment_data
+
+    def split_segment_train_test(self, test_ratio = 0.2, random_state = 0):
+        assert(self.segment_data is not None), "Invalid segment_data"
+        num_cols = int(self.channel_length / self.num_segments_per_channel) # excluding the target feature
+        num_rows = len(self.segment_data.keys())
+        X = np.zeros((num_rows, num_cols))
+        y = np.zeros(num_rows)
+        row = 0
+        for _, values in self.segment_data.items():
+            assert(num_cols == len(values) - 1), "Wrong segment length: {} vs {}".format(num_cols, len(values) - 1)
+            X[row] = values[:num_cols]
+            y[row] = values[num_cols]
+        
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=random_state)
+        for train_index, test_index in sss.split(X, y):
+            self.X_train, self.X_test = X[train_index], X[test_index]
+            self.y_train, self.y_test = y[train_index], y[test_index]
+
+    def min_max_scaling_train_set(self):        
+        assert(self.X_train is not None), "Invalid X_train"
+        self.min_max_scaler = MinMaxScaler()
+        self.X_train_scaled = self.min_max_scaler.fit_transform(self.X_train)
+
+    def min_max_scaling_test_set(self):
+        assert(self.min_max_scaler is not None), "Invalid min-max scaler"
+        self.X_test_scaled = self.min_max_scaler.transform(self.X_test)

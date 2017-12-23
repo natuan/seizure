@@ -34,6 +34,13 @@ class TestDataSet(unittest.TestCase):
         channel = channels["E"]["S001.txt"]
         self.assertTrue(np.array_equal(channel[:3], [100, 124, 153]))
         self.assertTrue(np.array_equal(channel[-3:], [57, 95, 462]))
+
+    def test_create_segment_data(self):
+        keys_count = len(self.data_set.segment_data.keys())
+        self.assertEqual(keys_count, 11500)
+        v = self.data_set.segment_data["C_N100.TXT_0"]
+        self.assertEqual(len(v), 179)
+        self.assertTrue(np.array_equal(v[:3], [-62, -64, -62]))
         
 if __name__ == '__main__':
     unittest.main()
