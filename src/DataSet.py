@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 
 from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.preprocessing import MinMaxScaler
 
 class DataSet:
     
@@ -17,24 +16,22 @@ class DataSet:
         Return: None
         """
         self.input_dir = input_dir
+        self.cache_dir = "../cache"
         self.channel_length = 4097
         self.num_channels_per_set = 100
         self.data_set = self.read_channels_all_sets()
+
+        # Segment the original data into segments with the default settings
         self.num_segments_per_channel = 23
         self.target_map = {"A": 0,
                            "B": 0,
                            "C": 1,
                            "D": 1,
                            "E": 2}
-        self.segment_data = self.create_segment_data() # use the number of segments and target map above
-        self.X_train = None
-        self.y_train = None
-        self.X_test = None
-        self.y_test = None
-
-        self.min_max_scaler = None
-        self.X_train_scaled = None
-        self.X_test_scaled = None
+        self.segment_data_df = self.create_segment_data() # use the number of segments and target map above
+        
+        self.train_df = None
+        self.test_df = None
         
     def read_channel_file(self, folder_name, file_name):
         """
@@ -93,7 +90,19 @@ class DataSet:
         for s in sets:
             channels_dict[s] = self.read_channels_in_set(s)
         return channels_dict
-    
+
+    def _create_target_class_string(self):
+        target_class_str = "@"
+        for class_id in range(5):
+            found = False
+            for class_str in ["A", "B", "C", "D", "E"]:
+                if self.target_map[class_str] == class_id:
+                    target_class_str += class_str
+                    found = True
+            if found:
+                target_class_str += "@"
+        return target_class_str
+            
     def create_segment_data(self, num_segments_per_channel = None, target_map = None):
         """
         Split channels into segments, creating data frame where each segment
@@ -107,15 +116,15 @@ class DataSet:
         "A", ..., "E" are keys and the values are the mapped integers
 
         Return:
-        - segment_data: a dictionary with keys indicating the following info: the set name ("A",...,"E"), file name, start and end indices 
-        within the channel from which the segment was extracted; values are numpy array of length num_features is 
+        - segment_data_df: a data frame with keys indicating the following info: the set name ("A",...,"E"), file name, start and end indices 
+        within the channel from which the segment was extracted; values are numpy array of length num_features, which is 
         (channel_length / num_segments_per_channel) + 1 (the last feature is the target set name)
         """
         self.num_segments_per_channel = num_segments_per_channel if num_segments_per_channel is not None else self.num_segments_per_channel
         self.target_map = target_map if target_map is not None else self.target_map
         num_segments = 5 * self.num_channels_per_set * self.num_segments_per_channel
         num_features = int(self.channel_length / self.num_segments_per_channel) + 1  # including the target feature in the last position
-        segment_data = {}
+        segment_data_dict = {}
         sets = ["A", "B", "C", "D", "E"]
         for s in sets:
             channels = self.data_set[s]
@@ -124,31 +133,90 @@ class DataSet:
                     start = seg_idx * (num_features - 1)
                     end = start + num_features - 1
                     key_name = s + "_" + file_name + "_" + str(start)
-                    segment_data[key_name] = np.append(channel[start : end], self.target_map[s])
-        return segment_data
+                    segment_data_dict[key_name] = np.append(channel[start : end], self.target_map[s])
+        segment_data_df = pd.DataFrame.from_dict(segment_data_dict, orient = 'index')
+        segment_data_df.index.name = "segment_id"
+        num_features = int(self.channel_length / self.num_segments_per_channel) + 1 # the last feature is target
+        col_names = ["f_{}".format(i) for i in range(num_features - 1)]
+        col_names.append("target_class")
+        segment_data_df.columns = col_names
+        segment_data_df.sort_index(inplace=True)          
 
-    def split_segment_train_test(self, test_ratio = 0.2, random_state = 0):
-        assert(self.segment_data is not None), "Invalid segment_data"
-        num_cols = int(self.channel_length / self.num_segments_per_channel) # excluding the target feature
-        num_rows = len(self.segment_data.keys())
-        X = np.zeros((num_rows, num_cols))
-        y = np.zeros(num_rows)
-        row = 0
-        for _, values in self.segment_data.items():
-            assert(num_cols == len(values) - 1), "Wrong segment length: {} vs {}".format(num_cols, len(values) - 1)
-            X[row] = values[:num_cols]
-            y[row] = values[num_cols]
+        target_class_str = self._create_target_class_string()
+        file_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}.csv".format(self.num_segments_per_channel, target_class_str))
+        if (not os.path.exists(file_path)):
+            print("Saving segment data into {}...".format(file_path))
+            segment_data_df.to_csv(file_path)
+            print(">> Done")
+            
+        return segment_data_df
+
+    def split_train_test(self, test_ratio = 0.2, random_state = 0):
+        assert(self.segment_data_df is not None), "Invalid segment_data"
+        num_cols = self.segment_data_df.shape[1] - 1 # excluding the target feature
+        num_rows = len(self.segment_data_df.index)
+
+        X = np.array(self.segment_data_df.index.values)
+        y = [self.segment_data_df.loc[segment_id, "target_class"] for segment_id in X]
+        assert(len(X) == len(y))
+
+        split = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=random_state)
+        for train_indices, test_indices in split.split(X, y):            
+            train_segment_ids = X[train_indices]
+            test_segment_ids = X[test_indices]
+            self.train_df = self.segment_data_df.loc[train_segment_ids]
+            self.test_df = self.segment_data_df.loc[test_segment_ids]
+            self.train_df.sort_index(inplace=True)
+            self.test_df.sort_index(inplace=True)
+            
+        target_class_str = self._create_target_class_string()
+        train_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TRAIN.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
+        if (not os.path.exists(train_path)):
+            print("Saving {}...".format(train_path))
+            self.train_df.to_csv(train_path)
+            print(">> Done")
+
+        test_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TEST.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
+        if (not os.path.exists(test_path)):
+            print("Saving {}...".format(test_path))
+            self.test_df.to_csv(test_path)
+            print(">> Done")
+
+    def load_train(self, file_path):
+        """
+        Load the train set from file
+
+        Params:
+        - file_path: file path of the train set
+
+        Pre: None
+
+        Post: self.train_set is assigned to the loaded data frame
+
+        Return: None
+        """
+        assert(os.path.exists(file_path)), "File {} not exist".format(file_path)
+        print("Loading train_df from {}...".format(file_path))
+        self.train_df = pd.DataFrame.from_csv(file_path, index_col = 0)
+        print(">> Done\n")
+
+    def load_test(self, file_path):
+        """
+        Load the test set from file
+
+        Params:
+        - file_path: file path of the test set
+
+        Pre: None
+
+        Post: self.test_set is assigned to the loaded data frame
+
+        Return: None
+        """
+        assert(os.path.exists(file_path)), "File {} not exist".format(file_path)
+        print("Loading test_df from {}...".format(file_path))
+        self.test_df = pd.DataFrame.from_csv(file_path, index_col = 0)
+        print(">> Done\n")
         
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=random_state)
-        for train_index, test_index in sss.split(X, y):
-            self.X_train, self.X_test = X[train_index], X[test_index]
-            self.y_train, self.y_test = y[train_index], y[test_index]
-
-    def min_max_scaling_train_set(self):        
-        assert(self.X_train is not None), "Invalid X_train"
-        self.min_max_scaler = MinMaxScaler()
-        self.X_train_scaled = self.min_max_scaler.fit_transform(self.X_train)
-
-    def min_max_scaling_test_set(self):
-        assert(self.min_max_scaler is not None), "Invalid min-max scaler"
-        self.X_test_scaled = self.min_max_scaler.transform(self.X_test)
+    
+        

@@ -36,9 +36,11 @@ class TestDataSet(unittest.TestCase):
         self.assertTrue(np.array_equal(channel[-3:], [57, 95, 462]))
 
     def test_create_segment_data(self):
-        keys_count = len(self.data_set.segment_data.keys())
+        keys_count = self.data_set.segment_data_df.shape[0]
+        features_count = self.data_set.segment_data_df.shape[1]
         self.assertEqual(keys_count, 11500)
-        v = self.data_set.segment_data["C_N100.TXT_0"]
+        self.assertEqual(features_count, 179)
+        v = self.data_set.segment_data_df.loc["C_N100.TXT_0"]
         self.assertEqual(len(v), 179)
         self.assertTrue(np.array_equal(v[:3], [-62, -64, -62]))
         
