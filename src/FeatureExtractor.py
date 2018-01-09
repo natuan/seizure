@@ -1,10 +1,9 @@
 import os
+import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 class FeatureExtractor:
-    RAW = "raw"
-    DENOISE = "denoise"
-    def __init__(self, segment_df, scaler = MinMaxScaler(), extractor = "denoise"):
+    def __init__(self, segment_df, scaler = MinMaxScaler(), extractor = "raw"):
         """
         Constructor
         
@@ -16,7 +15,7 @@ class FeatureExtractor:
 
         Return: None
         """
-        self.X, self.y = self._separate_features_target(segment_df)
+        self.X, self.y = self._separate_features_target(segment_df) # numpy ndarray, not data frames
         self.scaler = scaler
         self.extractor = extractor
         self.engine = None
@@ -29,11 +28,11 @@ class FeatureExtractor:
         - segment_df: a pandas data frame containing both features and target; should be either
         the train_df or test_df of a DataSet instance
         
-        Return: (X, y) with the same shape with self.X and self.y
+        Return: (X, y) where X and y are numpy ndarray with the same shape with those of self.X and self.y
         """
-        assert(segment_df), "Invalid segment data frame"
-        X = segment_df.drop(["target_class"], axis = 1)
-        y = segment_df["target_class"]
+        assert(segment_df is not None), "Invalid segment data frame"
+        X = pd.DataFrame.as_matrix(segment_df.drop(["target_class"], axis = 1))
+        y = pd.DataFrame.as_matrix(segment_df["target_class"])
         return X, y
         
     def fit(self):
@@ -41,11 +40,11 @@ class FeatureExtractor:
         Train the feature extraction algorithm against the features self.X based on the choice
         of self.extractor
         """
-        assert(self.X), "Invalid features"        
+        assert(self.X is not None), "Invalid features"        
         X_scaled = self.scaler.fit_transform(self.X) if (self.scaler) else self.X
-        if (self.extractor == RAW):
+        if (self.extractor == "raw"):
             pass
-        elif (self.extractor == DENOISE):
+        elif (self.extractor == "denoise"):
             pass
         else:
             assert(False), "Invalid feature extractor {}".format(self.extractor)
@@ -60,11 +59,11 @@ class FeatureExtractor:
         Return: (X_coded, y) where X_coded is the coding representations of the feature part, and y is the
         target part of the segment data frame
         """
-        assert(self.engine or self.extractor == RAW), "The extractor needs to be trained by calling fit(...) before being used for extracting features"
-        if (segment_df):
+        assert(self.engine is not None or self.extractor == "raw"), "The extractor needs to be trained by calling fit(...) before being used for extracting features"
+        if (segment_df is not None):
             X, y = self._separate_features_target(segment_df)
         else:
             X, y = self.X, self.y
-        X_scaled = self.scaler.transform(self.X) if (self.scaler) else self.X
-        X_coded, y = self.engine.eval(X_scaled, y) if self.engine else X_scaled
+        X_scaled = self.scaler.transform(X) if (self.scaler) else X
+        X_coded = self.engine.eval(X_scaled, y) if self.engine else X_scaled
         return X_coded, y
