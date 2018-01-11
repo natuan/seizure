@@ -16,7 +16,7 @@ class DataSet:
         Return: None
         """
         self.input_dir = input_dir
-        self.cache_dir = "../cache"
+        self.cache_dir = "/home/natuan/MyHDD/ml_nano_capstone/cache"
         self.channel_length = 4097
         self.num_channels_per_set = 100
         self.data_set = self.read_channels_all_sets()
@@ -29,9 +29,6 @@ class DataSet:
                            "D": 1,
                            "E": 2}
         self.segment_data_df = self.create_segment_data() # use the number of segments and target map above
-        
-        self.train_df = None
-        self.test_df = None
         
     def read_channel_file(self, folder_name, file_name):
         """
@@ -164,59 +161,32 @@ class DataSet:
         for train_indices, test_indices in split.split(X, y):            
             train_segment_ids = X[train_indices]
             test_segment_ids = X[test_indices]
-            self.train_df = self.segment_data_df.loc[train_segment_ids]
-            self.test_df = self.segment_data_df.loc[test_segment_ids]
-            self.train_df.sort_index(inplace=True)
-            self.test_df.sort_index(inplace=True)
+            train_df = self.segment_data_df.loc[train_segment_ids]
+            test_df = self.segment_data_df.loc[test_segment_ids]
+            train_df.sort_index(inplace=True)
+            test_df.sort_index(inplace=True)
             
         target_class_str = self._create_target_class_string()
         train_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TRAIN.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
         if (not os.path.exists(train_path)):
             print("Saving {}...".format(train_path))
-            self.train_df.to_csv(train_path)
+            train_df.to_csv(train_path)
             print(">> Done")
 
         test_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TEST.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
         if (not os.path.exists(test_path)):
             print("Saving {}...".format(test_path))
-            self.test_df.to_csv(test_path)
+            test_df.to_csv(test_path)
             print(">> Done")
 
-    def load_train(self, file_path):
-        """
-        Load the train set from file
-
-        Params:
-        - file_path: file path of the train set
-
-        Pre: None
-
-        Post: self.train_set is assigned to the loaded data frame
-
-        Return: None
-        """
+    def load_features_and_target(self, file_path):
         assert(os.path.exists(file_path)), "File {} not exist".format(file_path)
-        print("Loading train_df from {}...".format(file_path))
-        self.train_df = pd.DataFrame.from_csv(file_path, index_col = 0)
+        print("Loading features and target from segment data frame {}...".format(file_path))
+        df = pd.DataFrame.from_csv(file_path, index_col = 0)
+        X = pd.DataFrame.as_matrix(df.drop(["target_class"], axis = 1))
+        y = pd.DataFrame.as_matrix(df["target_class"])
         print(">> Done\n")
-
-    def load_test(self, file_path):
-        """
-        Load the test set from file
-
-        Params:
-        - file_path: file path of the test set
-
-        Pre: None
-
-        Post: self.test_set is assigned to the loaded data frame
-
-        Return: None
-        """
-        assert(os.path.exists(file_path)), "File {} not exist".format(file_path)
-        print("Loading test_df from {}...".format(file_path))
-        self.test_df = pd.DataFrame.from_csv(file_path, index_col = 0)
-        print(">> Done\n")
+        return X, y
         
     
         

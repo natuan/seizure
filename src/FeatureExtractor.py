@@ -3,22 +3,18 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 class FeatureExtractor:
-    def __init__(self, segment_df, scaler = MinMaxScaler(), extractor = "raw"):
+    def __init__(self, scaler = MinMaxScaler(), extractor = None):
         """
         Constructor
         
         Params:
-        - segment_df: data frame from which features will be extracted; this data frame
-        contains also the target class and should be the train_df of a DataSet
         - scaler: a scaler for preprocessing the features
-        - extractor: name of the feature extraction algorithm
+        - extractor: if None then scaled inputs are features; otherwise an instance of Autoencoder
 
         Return: None
         """
-        self.X, self.y = self._separate_features_target(segment_df) # numpy ndarray, not data frames
         self.scaler = scaler
         self.extractor = extractor
-        self.engine = None
 
     def _separate_features_target(self, segment_df):
         """
@@ -35,35 +31,26 @@ class FeatureExtractor:
         y = pd.DataFrame.as_matrix(segment_df["target_class"])
         return X, y
         
-    def fit(self):
+    def fit(self, X, n_epochs = 100, batch_size = 256, seed = 42):
         """
         Train the feature extraction algorithm against the features self.X based on the choice
         of self.extractor
         """
-        assert(self.X is not None), "Invalid features"        
-        X_scaled = self.scaler.fit_transform(self.X) if (self.scaler) else self.X
-        if (self.extractor == "raw"):
-            pass
-        elif (self.extractor == "denoise"):
+        X_scaled = self.scaler.fit_transform(X) if (self.scaler) else X
+        if (self.extractor == None):
             pass
         else:
-            assert(False), "Invalid feature extractor {}".format(self.extractor)
+            self.extractor.fit(X_scaled, n_epochs=n_epochs, batch_size=batch_size, seed=seed)
     
-    def eval(self, segment_df = None):
+    def eval(self, X):
         """
         Apply the trained extractor to a pandas data frame to retrieve the coding of the feature part
 
         Params:
-        - segment_df: a pandas data frame containing both features and target parts. If None then self.X and self.y are used.
+        - X: features
 
-        Return: (X_coded, y) where X_coded is the coding representations of the feature part, and y is the
-        target part of the segment data frame
+        Return: X_coded, the coding representations of the features X
         """
-        assert(self.engine is not None or self.extractor == "raw"), "The extractor needs to be trained by calling fit(...) before being used for extracting features"
-        if (segment_df is not None):
-            X, y = self._separate_features_target(segment_df)
-        else:
-            X, y = self.X, self.y
         X_scaled = self.scaler.transform(X) if (self.scaler) else X
-        X_coded = self.engine.eval(X_scaled, y) if self.engine else X_scaled
-        return X_coded, y
+        X_coded = self.extractor.outputs(X_scaled) if self.extractor else X_scaled
+        return X_coded

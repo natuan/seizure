@@ -4,7 +4,7 @@ import unittest
 from DataSet import DataSet
 from FeatureExtractor import FeatureExtractor
 
-class TestDataSet(unittest.TestCase):
+class TestFeatureExtractor(unittest.TestCase):
 
     def setUp(self):
         self.data_set = DataSet("../input")
