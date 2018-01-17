@@ -4,57 +4,88 @@ import tensorflow as tf
 from datetime import datetime
 from tqdm import *
 
-from Autoencoder import Autoencoder
+from Autoencoder import *
 
-class UnitAutoencoder(Autoencoder):
-    def __init__(self, name, n_inputs, n_neurons, dropout_rate):
+class UnitAutoencoder:
+    def __init__(self,
+                 name,
+                 n_inputs,
+                 n_neurons,
+                 noise_stddev = None,
+                 dropout_rate = None,
+                 tied_weights = False,
+                 hidden_activation = tf.nn.softmax,
+                 output_activation = None,
+                 regularizer = tf.contrib.layers.l2_regularizer(0.01),
+                 initializer = tf.contrib.layers.variance_scaling_initializer(),
+                 optimizer = tf.train.AdamOptimizer(0.001),
+                 tf_log_dir = "../tf_logs"):
         """
         Create an autoencoder that has one hidden layer of neurons
         
         Params:
-        - name: name of the unit autoencoder
         - n_inputs: number of inputs; also the number of neurons in the output layer
         - n_neurons: number of neurons in the hidden layer
-        - dropout_rate: if specified a Dropout layer will be added after the input layer
+        - noise_stddev: standard deviation of the Gaussian noise; not used if None
+        - dropout_rate: if specified a Dropout layer will be added after the input layer; not used if None
+        - regularizer: kernel regularizers for hidden and output layers
         Return: None
         """
-        now = datetime.utcnow().strftime("_Y%Y_m%m_d%d_H%H_M%M_S%S")
-        root_logdir = "/home/natuan/MyHDD/ml_nano_capstone/tf_logs"
-        logdir = "{}/run-{}/".format(root_logdir, now)
-
-        Autoencoder.__init__(self)
+        self.name = name
         self.graph = tf.Graph()
         with self.graph.as_default():
-            self.n_inputs = n_inputs
-            self.n_neurons = n_neurons
-            self.dropout_rate = dropout_rate
-            self.X = tf.placeholder(tf.float32, shape=[None, self.n_inputs])
-            if (self.dropout_rate):
-                # Denoise autoencoder is used with dropout
-                self.training = tf.placeholder_with_default(False, shape=(), name='training')
-                self.X_drop = tf.layers.dropout(self.X, self.dropout_rate, training=self.training)
-                self.hidden = tf.layers.dense(self.X_drop, self.n_neurons, activation=self.hidden_activation, name="hidden")
+            self.X = tf.placeholder(tf.float32, shape=[None, n_inputs])
+            self.training = tf.placeholder_with_default(False, shape=(), name='training')
+            if (noise_stddev is not None):
+                X_noisy = self.X + tf.random_normal(tf.shape(self.X), stddev = noise_stddev)
+            elif (dropout_rate is not None):
+                X_noisy = tf.layers.dropout(self.X, dropout_rate, training=self.training)
             else:
-                # Ordinary autoencoder
-                self.training = None
-                self.X_drop = None
-                self.hidden = tf.layers.dense(self.X, self.n_neurons, activation=self.hidden_activation, name="hidden")
-            self.outputs = tf.layers.dense(self.hidden, self.n_inputs, activation=self.output_activation, name="outputs")
+                X_noisy = self.X
+                
+            if (tied_weights):
+                hidden_weights_init = initializer([n_inputs, n_neurons])
+                hidden_weights = tf.Variable(hidden_weights_init, dtype=tf.float32, name="{}_hidden_weights".format(self.name))
+                hidden_biases = tf.Variable(tf.zeros(n_neurons), name = "{}_hidden_biases".format(self.name))
+                assert(hidden_activation), "Invalid hidden activation function"
+                self.hidden = hidden_activation(tf.matmul(X_noisy, hidden_weights) + hidden_biases)
+                output_weights = tf.transpose(hidden_weights, name = "{}_output_weights".format(self.name))
+                output_biases = tf.Variable(tf.zeros(n_inputs), name = "{}_output_biases".format(self.name))
+                output_linear = tf.matmul(self.hidden, output_weights) + output_biases
+                self.outputs = output_activation(output_linear) if output_activation else output_linear
+                self.reg_losses = regularizer(hidden_weights) if regularizer else []
+            else:
+                self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))
+                self.outputs = tf.layers.dense(self.hidden, n_inputs, activation=output_activation, kernel_regularizer = regularizer, name="{}_outputs".format(self.name))
+                self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+                
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
-            #self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-            #self.loss = tf.add_n([self.reconstruction_loss] + self.reg_losses)
-            #self.training_op = self.optimizer.minimize(loss)
-            self.training_op = self.optimizer.minimize(self.reconstruction_loss)
+            self.loss = tf.add_n([self.reconstruction_loss] + self.reg_losses)               
+            self.training_op = optimizer.minimize(self.loss)
             self.init = tf.global_variables_initializer()
             self.saver = tf.train.Saver()
-            self.loss_summary = tf.summary.scalar('LOSS', self.reconstruction_loss)
-            self.file_writer = tf.summary.FileWriter(logdir, self.graph)
+            loss_str = "Reconstruction and regularizer loss" if regularizer else "Reconstruction loss"
+            self.loss_summary = tf.summary.scalar(loss_str, self.loss)           
+            self.tf_log_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)
             
-        # Trained parameters
-        self.params = None
+        # Dictionary of trainable parameters: key = variable name, values are their values (after training or
+        # restored from a model)
+        self.params = None        
         
-    def fit(self, X_train, n_epochs = 100, batch_size = 256, seed = 42):
-        assert(self.n_inputs == X_train.shape[1]), "Invalid input shape"
+    def fit(self, X_train, n_epochs = 100, batch_size = 256, checkpoint_steps = 10, seed = 42, model_path = None):
+        """
+        Train the unit autoencoder against a training set
+
+        Params:
+        - X_train: the training set of shape (n_samples, n_features)
+        - n_epochs: number of epochs to train
+        - batch_size: batch size
+        - checkpoint_steps: number of steps to record checkpoint and logs
+        - seed: random seed for tf
+        - model_path: full path model file
+
+        """
+        assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
             tf.set_random_seed(seed)
             self.init.run()
@@ -65,24 +96,48 @@ class UnitAutoencoder(Autoencoder):
                 for batch_idx in range(n_batches):
                     indices = X_train_indices[start_idx : start_idx + batch_size]
                     X_batch = X_train[indices]
-                    if batch_idx % 10 == 0:
+                    if batch_idx % checkpoint_steps == 0:
                         summary_str = self.loss_summary.eval(feed_dict={self.X: X_batch})
                         step = epoch * n_batches + batch_idx
-                        self.file_writer.add_summary(summary_str, step)
-                    sess.run(self.training_op, feed_dict={self.X: X_batch})
+                        self.tf_log_file_writer.add_summary(summary_str, step)
+                    sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})
                     start_idx += batch_size
                 # The remaining (less than batch_size) samples
                 indices = X_train_indices[start_idx : len(X_train)]
                 X_batch = X_train[indices]
-                sess.run(self.training_op, feed_dict={self.X: X_batch})                
+                sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-            self.file_writer.close()
-            
+            self.tf_log_file_writer.close()
+            if model_path is not None:
+                print("Saving model to {}...".format(model_path))
+                self.saver.save(sess, model_path)
+                print(">> Done")
+
+    def restore(self, model_path):
+        """
+        Construct and restore the model from a given model file 
+
+        Params:
+        - model_path: full path model file
+
+        Return: None
+        """
+        assert(self.graph), "Invalid graph"
+        with tf.Session(graph=self.graph) as sess:
+            print("Restoring model from {}...".format(model_path))
+            self.saver.restore(sess, model_path)
+            self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
+            print(">> Done")
+                
+    def loss(self, X):
+        return self.loss.eval(feed_dict={self.X: X})
+    
     def reconstruction_loss(self, X):
         return self.reconstruction_loss.eval(feed_dict={self.X: X})
 
-    def hidden_outputs(self, X):
-        return self.hidden.eval(feed_dict={self.X: X})
+    def hidden_outputs(self, X, file_path = None):
+        codings = self.hidden.eval(feed_dict={self.X: X})
+        return codings
 
     def outputs(self, X):
         return self.outputs.eval(feed_dict={self.X: X})

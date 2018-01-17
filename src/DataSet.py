@@ -6,7 +6,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 
 class DataSet:
     
-    def __init__(self, input_dir):
+    def __init__(self, input_dir, cache_dir):
         """
         Create an instance given the data folder
 
@@ -16,7 +16,7 @@ class DataSet:
         Return: None
         """
         self.input_dir = input_dir
-        self.cache_dir = "/home/natuan/MyHDD/ml_nano_capstone/cache"
+        self.cache_dir = cache_dir
         self.channel_length = 4097
         self.num_channels_per_set = 100
         self.data_set = self.read_channels_all_sets()
@@ -180,6 +180,14 @@ class DataSet:
             print(">> Done")
 
     def load_features_and_target(self, file_path):
+        """
+        Load segment data frame and separate it into features and target
+
+        Params:
+        - file_path: segment data frame file in full path
+
+        Return: (X, y) where X is features of shape (n_samples, n_features ) and y is target of shape (n_samples, 1)
+        """
         assert(os.path.exists(file_path)), "File {} not exist".format(file_path)
         print("Loading features and target from segment data frame {}...".format(file_path))
         df = pd.DataFrame.from_csv(file_path, index_col = 0)
