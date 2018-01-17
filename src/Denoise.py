@@ -1,10 +1,16 @@
 import os
 import numpy as np
 import tensorflow as tf
-from datetime import datetime
 from tqdm import *
+from datetime import datetime
 
 from Autoencoder import *
+
+# Create a time string
+def timestr():
+    today = datetime.today()
+    month_dict = {1:"jan", 2:"feb", 3:"mar", 4:"apr", 5:"may", 6:"jun", 7:"jul", 8:"aug", 9:"sep", 10:"oct", 11:"nov", 12:"dec"}
+    return "{}{}_{}:{}".format(month_dict[today.month], today.day, today.hour, today.minute)
 
 class UnitAutoencoder:
     def __init__(self,
@@ -65,14 +71,15 @@ class UnitAutoencoder:
             self.init = tf.global_variables_initializer()
             self.saver = tf.train.Saver()
             loss_str = "Reconstruction and regularizer loss" if regularizer else "Reconstruction loss"
-            self.loss_summary = tf.summary.scalar(loss_str, self.loss)           
+            self.loss_summary = tf.summary.scalar(loss_str, self.loss)
+            tf_log_dir = "{}/run-{}".format(tf_log_dir, timestr())
             self.tf_log_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)
             
         # Dictionary of trainable parameters: key = variable name, values are their values (after training or
         # restored from a model)
         self.params = None        
         
-    def fit(self, X_train, n_epochs = 100, batch_size = 256, checkpoint_steps = 10, seed = 42, model_path = None):
+    def fit(self, X_train, n_epochs, model_path, batch_size = 256, checkpoint_steps = 10, seed = 42):
         """
         Train the unit autoencoder against a training set
 
@@ -82,7 +89,7 @@ class UnitAutoencoder:
         - batch_size: batch size
         - checkpoint_steps: number of steps to record checkpoint and logs
         - seed: random seed for tf
-        - model_path: full path model file
+        - model_path: model full path file to be saved
 
         """
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
@@ -108,19 +115,19 @@ class UnitAutoencoder:
                 sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.tf_log_file_writer.close()
-            if model_path is not None:
-                print("Saving model to {}...".format(model_path))
-                self.saver.save(sess, model_path)
-                print(">> Done")
+            print("Saving model to {}...".format(model_path))
+            self.saver.save(sess, model_path)
+            print(">> Done")
 
-    def restore(self, model_path):
+    def restore_and_eval(self, X, model_path, varlist):
         """
-        Construct and restore the model from a given model file 
+        Restore model's params and evaluate variables
 
         Params:
-        - model_path: full path model file
+        - model_path: full path to the model file
+        - varlist: list of variables to evaluate. Valid values: "loss", "reconstruction_loss", "hidden_outputs", "outputs"
 
-        Return: None
+        Return: a dictionary with variables in the list as keys
         """
         assert(self.graph), "Invalid graph"
         with tf.Session(graph=self.graph) as sess:
@@ -128,19 +135,19 @@ class UnitAutoencoder:
             self.saver.restore(sess, model_path)
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             print(">> Done")
-                
-    def loss(self, X):
-        return self.loss.eval(feed_dict={self.X: X})
-    
-    def reconstruction_loss(self, X):
-        return self.reconstruction_loss.eval(feed_dict={self.X: X})
-
-    def hidden_outputs(self, X, file_path = None):
-        codings = self.hidden.eval(feed_dict={self.X: X})
-        return codings
-
-    def outputs(self, X):
-        return self.outputs.eval(feed_dict={self.X: X})
+            results = {}
+            for var in varlist:
+                if var == "loss":
+                    results[var] = self.loss.eval(feed_dict={self.X: X})
+                elif var == "reconstruction_loss":
+                    results[var] = self.reconstruction_loss.eval(feed_dict={self.X: X})
+                elif var == "hidden_outputs":
+                    results[var] = self.hidden.eval(feed_dict={self.X: X})
+                elif var == "outputs":
+                    results[var] = self.outputs.eval(feed_dict={self.X: X})
+                else:
+                    assert(False), "Invalid var {} to evaluate".format(var)
+            return results
         
 class TrainValidationGenerator:
     def __init__(self, X, n_folds):
