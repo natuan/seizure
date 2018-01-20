@@ -1,8 +1,10 @@
 import os
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 from tqdm import *
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 from Autoencoder import *
 
@@ -39,8 +41,9 @@ class UnitAutoencoder:
         """
         self.name = name
         self.graph = tf.Graph()
+
         with self.graph.as_default():
-            self.X = tf.placeholder(tf.float32, shape=[None, n_inputs])
+            self.X = tf.placeholder(tf.float32, shape=[None, n_inputs], name="X")
             self.training = tf.placeholder_with_default(False, shape=(), name='training')
             if (noise_stddev is not None):
                 X_noisy = self.X + tf.random_normal(tf.shape(self.X), stddev = noise_stddev)
@@ -48,7 +51,7 @@ class UnitAutoencoder:
                 X_noisy = tf.layers.dropout(self.X, dropout_rate, training=self.training)
             else:
                 X_noisy = self.X
-                
+
             if (tied_weights):
                 hidden_weights_init = initializer([n_inputs, n_neurons])
                 hidden_weights = tf.Variable(hidden_weights_init, dtype=tf.float32, name="{}_hidden_weights".format(self.name))
@@ -63,10 +66,10 @@ class UnitAutoencoder:
             else:
                 self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))
                 self.outputs = tf.layers.dense(self.hidden, n_inputs, activation=output_activation, kernel_regularizer = regularizer, name="{}_outputs".format(self.name))
-                self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+                self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)                
                 
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
-            self.loss = tf.add_n([self.reconstruction_loss] + self.reg_losses)               
+            self.loss = tf.add_n([self.reconstruction_loss] + self.reg_losses)
             self.training_op = optimizer.minimize(self.loss)
             self.init = tf.global_variables_initializer()
             self.saver = tf.train.Saver()
@@ -74,12 +77,11 @@ class UnitAutoencoder:
             self.loss_summary = tf.summary.scalar(loss_str, self.loss)
             tf_log_dir = "{}/run-{}".format(tf_log_dir, timestr())
             self.tf_log_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)
-            
         # Dictionary of trainable parameters: key = variable name, values are their values (after training or
         # restored from a model)
         self.params = None        
         
-    def fit(self, X_train, n_epochs, model_path, batch_size = 256, checkpoint_steps = 10, seed = 42):
+    def fit(self, X_train, n_epochs, model_path, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         """
         Train the unit autoencoder against a training set
 
@@ -91,9 +93,13 @@ class UnitAutoencoder:
         - seed: random seed for tf
         - model_path: model full path file to be saved
 
-        """
+        """       
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
+            if tfdebug:
+                sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+            if batch_size is None:
+                batch_size = len(X_train)
             tf.set_random_seed(seed)
             self.init.run()
             for epoch in tqdm(range(n_epochs)):
@@ -103,23 +109,24 @@ class UnitAutoencoder:
                 for batch_idx in range(n_batches):
                     indices = X_train_indices[start_idx : start_idx + batch_size]
                     X_batch = X_train[indices]
-                    if batch_idx % checkpoint_steps == 0:
+                    step = epoch * n_batches + batch_idx
+                    if step % checkpoint_steps == 0:
                         summary_str = self.loss_summary.eval(feed_dict={self.X: X_batch})
-                        step = epoch * n_batches + batch_idx
                         self.tf_log_file_writer.add_summary(summary_str, step)
                     sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})
                     start_idx += batch_size
                 # The remaining (less than batch_size) samples
                 indices = X_train_indices[start_idx : len(X_train)]
-                X_batch = X_train[indices]
-                sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                
+                if len(indices) > 0:
+                    X_batch = X_train[indices]
+                    sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.tf_log_file_writer.close()
             print("Saving model to {}...".format(model_path))
             self.saver.save(sess, model_path)
             print(">> Done")
 
-    def restore_and_eval(self, X, model_path, varlist):
+    def restore_and_eval(self, X, model_path, varlist, tfdebug = False):
         """
         Restore model's params and evaluate variables
 
@@ -127,7 +134,7 @@ class UnitAutoencoder:
         - model_path: full path to the model file
         - varlist: list of variables to evaluate. Valid values: "loss", "reconstruction_loss", "hidden_outputs", "outputs"
 
-        Return: a dictionary with variables in the list as keys
+        Return: a list of evaluated variables
         """
         assert(self.graph), "Invalid graph"
         with tf.Session(graph=self.graph) as sess:
@@ -135,20 +142,45 @@ class UnitAutoencoder:
             self.saver.restore(sess, model_path)
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             print(">> Done")
-            results = {}
+            if tfdebug:
+                sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+            varmap = {"loss": self.loss,
+                      "reconstruction_loss": self.reconstruction_loss,
+                      "hidden_outputs": self.hidden,
+                      "outputs": self.outputs}
+            vars_to_eval = []
             for var in varlist:
+                # The order of var in the list needs to be kept, thus this for-loop
                 if var == "loss":
-                    results[var] = self.loss.eval(feed_dict={self.X: X})
+                    vars_to_eval += [self.loss]
                 elif var == "reconstruction_loss":
-                    results[var] = self.reconstruction_loss.eval(feed_dict={self.X: X})
+                    vars_to_eval += [self.reconstruction_loss]
                 elif var == "hidden_outputs":
-                    results[var] = self.hidden.eval(feed_dict={self.X: X})
+                    vars_to_eval += [self.hidden]
                 elif var == "outputs":
-                    results[var] = self.outputs.eval(feed_dict={self.X: X})
-                else:
-                    assert(False), "Invalid var {} to evaluate".format(var)
-            return results
-        
+                    vars_to_eval += [self.outputs]
+            return sess.run(vars_to_eval, feed_dict={self.X: X})
+
+    def plot_hidden_neurons(self, plot_dir_path):
+        assert(self.params), "Error: self.params empty"
+        assert(plot_dir_path), "Invalid dir path"
+        if not os.path.exists(plot_dir_path):
+            os.makedirs(plot_dir_path)
+        kernel_name = "{}_hidden/kernel:0".format(self.name)
+        weights_list = self.params[kernel_name]
+        n_rows = 10
+        n_cols = len(weights_list) // n_rows
+        fig = plt.figure()
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(50, 48))
+        idx = 0
+        for r in range(n_rows):
+            for c in range(n_cols):
+                ax = fig.add_subplot(n_rows, n_cols, idx + 1)
+                ax.plot(weights_list[idx])
+                idx += 1
+        plot_file = os.path.join(plot_dir_path, "neurons.png")
+        plt.savefig(plot_file)
+            
 class TrainValidationGenerator:
     def __init__(self, X, n_folds):
         self.X = X
