@@ -37,7 +37,7 @@ class FeatureExtractor:
             pass
         else:
             self.model_path = model_path
-            self.extractor.fit(self.X_scaled, n_epochs=n_epochs, batch_size=batch_size, seed=seed, model_path=self.model_path, tfdebug=tfdebug)
+            self.extractor.fit(X_train=self.X_scaled, n_epochs=n_epochs, batch_size=batch_size, seed=seed, model_path=self.model_path, tfdebug=tfdebug)
     
     def codings(self,
                 X = None,
