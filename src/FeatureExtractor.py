@@ -20,6 +20,8 @@ class FeatureExtractor:
         self.y_train = y_train
         self.extractor = extractor
         self.model_path = model_path
+        if self.extractor is not None and self.model_path is not None:
+            self.extractor.restore(self.model_path)
         
     def fit(self, model_path, n_epochs, batch_size = 256, seed = 42, tfdebug = False):
         """
@@ -38,7 +40,7 @@ class FeatureExtractor:
         else:
             self.model_path = model_path
             self.extractor.fit(X_train=self.X_scaled, n_epochs=n_epochs, batch_size=batch_size, seed=seed, model_path=self.model_path, tfdebug=tfdebug)
-    
+            
     def codings(self,
                 X = None,
                 inverse_transform = False):

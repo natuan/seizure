@@ -5,7 +5,7 @@ import pandas as pd
 import tensorflow as tf
 from DataSet import DataSet
 from FeatureExtractor import FeatureExtractor
-from Denoise import UnitAutoencoder
+from Denoise import *
 
 from Utils import dicts_equal
 
@@ -51,12 +51,24 @@ unit0 = UnitAutoencoder(unit_long_name_0, n_inputs_0, n_neurons_0,
 # For training from scratch
 scaler = MinMaxScaler(feature_range=(-1,1))
 
-unit0_ext = FeatureExtractor(X_train, y_train, scaler=scaler, extractor=unit0)
-unit0_ext.fit(n_epochs = n_epochs_0, model_path=model_path_0, tfdebug=False)
+# For constructing and training the network from scratch
+#unit0_ext = FeatureExtractor(X_train, y_train, scaler=scaler, extractor=unit0)
+#unit0_ext.fit(n_epochs = n_epochs_0, model_path=model_path_0, tfdebug=False)
 
 # For restoring trained model
-#feature_extractor = FeatureExtractor(X_train, y_train, scaler=scaler, extractor=autoencoder, model_path = model_path) # (0,1) min-max scaler
+unit0_ext = FeatureExtractor(X_train, y_train, scaler=scaler, extractor=unit0, model_path = model_path_0)
 
+# The stacked autoencoders
+n_epochs = 1000
+stack_path = os.path.join(root_dir, "Exp08", "stack")
+cache_dir = os.path.join(stack_path, "cache")
+tf_log_dir = os.path.join(stack_path, "tf_log")
+stack_model_path = os.path.join(stack_path, "stack_model")
+stack = stacked_autoencoders("exp08_stack", [unit0], cache_dir=cache_dir, tf_log_dir=tf_log_dir)
+stack_ext = FeatureExtractor(X_train, y_train, scaler=scaler, extractor=stack)
+stack_ext.fit(model_path=stack_model_path, n_epochs=n_epochs)
+
+"""
 sample_indices_to_plot = [0,1, 9100, 9101]
 reconstructed_dir_path = os.path.join(root_dir, "Exp08", "plots", "reconstructed_{}".format(unit_long_name_0))
 inverse_transform = True if scaler is not None else False
@@ -68,3 +80,4 @@ X_outputs = unit0_ext.outputs(X_train,
 
 weights_dir_path = os.path.join(root_dir, "Exp08", "plots", "weights_{}".format(unit_long_name_0))
 unit0_ext.extractor.plot_hidden_neurons(weights_dir_path)
+"""
