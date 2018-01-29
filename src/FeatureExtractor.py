@@ -4,7 +4,7 @@ from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
 class FeatureExtractor:
-    def __init__(self, X_train, y_train, scaler = MinMaxScaler(), extractor = None, model_path = None):
+    def __init__(self, X_train, scaler = MinMaxScaler(), extractor = None, model_path = None):
         """
         Constructor
         
@@ -17,7 +17,6 @@ class FeatureExtractor:
         """
         self.scaler = scaler
         self.X_scaled = self.scaler.fit_transform(X_train) if (self.scaler) else X_train
-        self.y_train = y_train
         self.extractor = extractor
         self.model_path = model_path
         if self.extractor is not None and self.model_path is not None:
