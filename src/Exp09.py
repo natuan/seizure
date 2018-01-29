@@ -32,17 +32,17 @@ scaler = MinMaxScaler(feature_range=(-1,1))
 
 # First unit autoencoder
 n_inputs_0 = X_train.shape[1]
-n_neurons_0 = 75
+n_neurons_0 = 200
 hidden_activation_0 = tf.nn.relu
-reg_val = 0.0005
+reg_val = None
 regularizer_0 = tf.contrib.layers.l2_regularizer(reg_val) if reg_val is not None else None
-noise_stddev_0 = None
+noise_stddev_0 = 0.1
 dropout_rate_0 = None
 n_epochs_0 = 1000
 unit_name_0 = "unit0"
 config_str_0 = unit_config_str(n_inputs_0, n_neurons_0, hidden_activation_0, reg_val, noise_stddev_0, dropout_rate_0)
 unit_long_name_0 = "{}_{}".format(unit_name_0, config_str_0)
-model_dir_0 = os.path.join(root_dir, "Exp08", "{}".format(unit_name_0))
+model_dir_0 = os.path.join(root_dir, "Exp09", "{}".format(unit_name_0))
 model_path_0 = os.path.join(model_dir_0, "{}.ckpt".format(unit_long_name_0))
 tf_log_dir = os.path.join(model_dir_0, "tf_logs")
 unit0 = UnitAutoencoder(unit_long_name_0, n_inputs_0, n_neurons_0,
@@ -65,17 +65,17 @@ print(">> Done")
 
 # Second unit autoencoder
 n_inputs_1 = n_neurons_0
-n_neurons_1 = 75
+n_neurons_1 = 200
 hidden_activation_1 = tf.nn.relu
-reg_val = 0.0005
+reg_val = None
 regularizer_1 = tf.contrib.layers.l2_regularizer(reg_val) if reg_val is not None else None
-noise_stddev_1 = None
+noise_stddev_1 = 0.1
 dropout_rate_1 = None
 n_epochs_1 = 1000
 unit_name_1 = "unit1"
 config_str_1 = unit_config_str(n_inputs_1, n_neurons_1, hidden_activation_1, reg_val, noise_stddev_1, dropout_rate_1)
 unit_long_name_1 = "{}_{}".format(unit_name_1, config_str_1)
-model_dir_1 = os.path.join(root_dir, "Exp08", "{}".format(unit_name_1))
+model_dir_1 = os.path.join(root_dir, "Exp09", "{}".format(unit_name_1))
 model_path_1 = os.path.join(model_dir_1, "{}.ckpt".format(unit_long_name_1))
 tf_log_dir = os.path.join(model_dir_1, "tf_logs")
 unit1 = UnitAutoencoder(unit_long_name_1, n_inputs_1, n_neurons_1,
@@ -99,7 +99,7 @@ unit1_ext = FeatureExtractor(X_coded, y_train, scaler=None, extractor=unit1, mod
 
 # The stacked autoencoders
 n_epochs = 1000
-stack_path = os.path.join(root_dir, "Exp08", "stack")
+stack_path = os.path.join(root_dir, "Exp09", "stack")
 cache_dir = os.path.join(stack_path, "cache")
 tf_log_dir = os.path.join(stack_path, "tf_logs")
 stack_model_path = os.path.join(stack_path, "stack_model")

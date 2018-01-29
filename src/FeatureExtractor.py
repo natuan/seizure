@@ -82,7 +82,7 @@ class FeatureExtractor:
         else:
             X_scaled = self.X_scaled
         if self.extractor:
-            [X_outputs] = self.extractor.restore_and_eval(X_scaled, self.model_path, ["outputs"], tfdebug=tfdebug)
+            [X_outputs] = self.extractor.restore_and_eval(model_path=self.model_path, X=X_scaled, varlist=["outputs"], tfdebug=tfdebug)
         else:
             X_outputs = X_scaled
         if inverse_transform:

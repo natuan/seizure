@@ -6,8 +6,6 @@ from tqdm import *
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-from Autoencoder import *
-
 # Create a time string
 def timestr():
     today = datetime.today()
@@ -51,7 +49,9 @@ class UnitAutoencoder:
             self.X = tf.placeholder(tf.float32, shape=[None, n_inputs], name="X")
             self.training = tf.placeholder_with_default(False, shape=(), name='training')
             if (noise_stddev is not None):
-                X_noisy = self.X + tf.random_normal(tf.shape(self.X), stddev = noise_stddev)
+                X_noisy = tf.cond(self.training,
+                                  lambda: self.X + tf.random_normal(tf.shape(self.X), stddev = noise_stddev),
+                                  lambda: self.X)
             elif (dropout_rate is not None):
                 X_noisy = tf.layers.dropout(self.X, dropout_rate, training=self.training)
             else:
@@ -237,6 +237,7 @@ class StackedAutoencoders:
         self.name = name
         self.stacked_units = []
         self.graph = None
+        self.params = None
         self.cache_dir = cache_dir
         self.tf_log_dir = tf_log_dir
 
@@ -284,8 +285,8 @@ class StackedAutoencoders:
                 input_tensor = self.hidden[-1]
             activations, reg_loss = self._add_hidden_layer(input_tensor, unit, layer_name)
             self.hidden += [activations]
-            #if reg_loss is not None:
-            #    self.loss = tf.add_n([self.loss, reg_loss]) if self.loss is not None else reg_loss
+            if reg_loss is not None:
+                self.loss = tf.add_n([self.loss, reg_loss]) if self.loss is not None else reg_loss
         
     def stack_output_layer(self,
                            layer_name,
@@ -296,7 +297,7 @@ class StackedAutoencoders:
         assert(self.hidden), "Empty hidden layers"
         assert(self.graph), "Empty graph"
         with self.graph.as_default():
-            with tf.name_scope(layer_name):
+            with tf.variable_scope(layer_name):
                 weights = tf.get_variable(name="weights",
                                           shape=(self.hidden[-1].shape[1], self.X.shape[1]),
                                           initializer=kernel_initializer)
@@ -307,20 +308,8 @@ class StackedAutoencoders:
                 self.outputs = activation(pre_acts, name="activations") if activation is not None else pre_acts
 
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
-            self.loss = self.reconstruction_loss
-            #self.loss = tf.add_n([self.loss, self.reconstruction_loss]) if self.loss is not None else self.reconstruction_loss
-            #self.loss = tf.add_n([self.loss, kernel_regularizer(weights)]) if kernel_regularizer is not None else self.loss
-
-            """
-            self.optimizer = tf.train.AdamOptimizer(0.001)
-            self.training_op = self.optimizer.minimize(self.loss)
-            self.init = tf.global_variables_initializer()
-            self.saver = tf.train.Saver()
-            self.loss_summary = tf.summary.scalar("Loss", self.loss)
-            self.summary = tf.summary.merge_all()
-            tf_log_dir = "{}/{}_run-{}".format(self.tf_log_dir, self.name, timestr())
-            self.train_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)            
-            """
+            self.loss = tf.add_n([self.loss, self.reconstruction_loss]) if self.loss is not None else self.reconstruction_loss
+            self.loss = tf.add_n([self.loss, kernel_regularizer(weights)]) if kernel_regularizer is not None else self.loss
 
     def finalize(self, optimizer = tf.train.AdamOptimizer(0.001)):
         assert(self.graph), "Empty graph"
@@ -338,7 +327,9 @@ class StackedAutoencoders:
         assert(unit.params), "Invalid unit.params"
         with tf.name_scope(layer_name):
             if (unit.noise_stddev is not None):
-                input_noisy = input_tensor + tf.random_normal(tf.shape(input_tensor), stddev = unit.noise_stddev)
+                input_noisy = tf.cond(self.training,
+                                      lambda: input_tensor + tf.random_normal(tf.shape(input_tensor), stddev = unit.noise_stddev),
+                                      lambda: input_tensor)
             elif (unit.dropout_rate is not None):
                 input_noisy = tf.layers.dropout(input_tensor, unit.dropout_rate, training=self.training)
             else:
@@ -372,8 +363,6 @@ class StackedAutoencoders:
                 for batch_idx in range(n_batches):
                     indices = X_train_indices[start_idx : start_idx + batch_size]
                     X_batch = X_train[indices]
-                    #import pdb
-                    #pdb.set_trace()
                     sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                    
                     step = epoch * n_batches + batch_idx
                     if step % checkpoint_steps == 0:
@@ -391,6 +380,15 @@ class StackedAutoencoders:
             self.saver.save(sess, model_path)
             print(">> Done")
             return sess.run(self.loss, feed_dict={self.X: X_train})
+
+    def restore(self, model_path):
+        print("Restoring model from {}...".format(model_path))
+        if self.params is not None:
+            print(">> Warning: self.params not empty and will be replaced")
+        with tf.Session(graph=self.graph) as sess:
+            self.saver.restore(sess, model_path)
+            self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
+        print(">> Done")
         
     def restore_and_eval(self, model_path, X = None, varlist = [], tfdebug = False):
         """
@@ -410,10 +408,9 @@ class StackedAutoencoders:
             print(">> Done")
             if tfdebug:
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-
             if not varlist:
                 return []
-            assert(X), "Invalid input samples"
+            assert(X is not None), "Invalid input samples"
             varmap = {"loss": self.loss,
                       "reconstruction_loss": self.reconstruction_loss,
                       "hidden_outputs": self.hidden[-1],
@@ -430,7 +427,7 @@ class StackedAutoencoders:
                 elif var == "outputs":
                     vars_to_eval += [self.outputs]
             return sess.run(vars_to_eval, feed_dict={self.X: X})
-
+        
 def stacked_autoencoders(name,
                          units,
                          hidden_layer_names = None,
