@@ -6,11 +6,7 @@ from tqdm import *
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-# Create a time string
-def timestr():
-    today = datetime.today()
-    month_dict = {1:"jan", 2:"feb", 3:"mar", 4:"apr", 5:"may", 6:"jun", 7:"jul", 8:"aug", 9:"sep", 10:"oct", 11:"nov", 12:"dec"}
-    return "{}{}_{}:{}".format(month_dict[today.month], today.day, today.hour, today.minute)
+from Utils import timestr
 
 class UnitAutoencoder:
     def __init__(self,
@@ -206,28 +202,7 @@ class UnitAutoencoder:
                 idx += 1
         plot_file = os.path.join(plot_dir_path, "neurons.png")
         plt.savefig(plot_file)
-            
-class TrainValidationGenerator:
-    def __init__(self, X, n_folds):
-        self.X = X
-        self.n_folds = n_folds
-        self.batch_size = len(self.X) // self.n_folds
-        self.cur_idx = 0
-
-    def next_train_validation_sets(self):
-        """
-        Generate the next train and validation sets
         
-        Params: None
-
-        Return: train_set, validation_set
-        """
-        start = self.cur_idx
-        end = np.minimum(start + self.batch_size, len(self.X))
-        train_set = np.vstack((X[:start], X[end:len(self.X)]))
-        validation_set = X[start:end]
-        self.cur_idx = end if end < len(self.X) else 0
-        return train_set, validation_set
 
 class StackedAutoencoders:
     def __init__(self,
@@ -272,6 +247,29 @@ class StackedAutoencoders:
                     return False
         return True
 
+    def _add_hidden_layer(self, input_tensor, unit, layer_name):
+        assert(unit.params), "Invalid unit.params"
+        with tf.name_scope(layer_name):           
+            if (unit.dropout_rate is not None):
+                input_noisy = tf.layers.dropout(input_tensor, unit.dropout_rate, training=self.training)
+            else:
+                # The Gaussian noise, if appliable during training of the units, is ignored in the stack
+                input_noisy = input_tensor
+                
+            kernel_name = "{}_hidden/kernel:0".format(unit.name)
+            bias_name = "{}_hidden/bias:0".format(unit.name)
+            weights = tf.Variable(unit.params[kernel_name], name = "weights")
+            assert(weights.shape == (unit.n_inputs, unit.n_neurons)), "Wrong assumption about weight's shape"
+            biases = tf.Variable(unit.params[bias_name], name = "biases")
+            assert(biases.shape == (unit.n_neurons,)), "Wrong assumption about bias's shape"
+            pre_activations = tf.matmul(input_noisy, weights) + biases
+            if unit.hidden_activation is not None:
+                activations = unit.hidden_activation(pre_activations, name = "activations")
+            else:
+                activations = pre_activations
+            reg_loss = unit.regularizer(weights) if unit.regularizer else None
+            return activations, reg_loss          
+    
     def stack_autoencoder(self, unit, layer_name):
         assert(self._check_unit_validity(unit)), "Invalid unit autoencoder"
         self.graph = tf.Graph() if self.graph is None else self.graph
@@ -310,44 +308,26 @@ class StackedAutoencoders:
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
             self.loss = tf.add_n([self.loss, self.reconstruction_loss]) if self.loss is not None else self.reconstruction_loss
             self.loss = tf.add_n([self.loss, kernel_regularizer(weights)]) if kernel_regularizer is not None else self.loss
-
+            
     def finalize(self, optimizer = tf.train.AdamOptimizer(0.001)):
         assert(self.graph), "Empty graph"
         with self.graph.as_default():
             if optimizer is not None:
                 self.training_op = optimizer.minimize(self.loss)
+                self.loss_summary = tf.summary.scalar("Loss", self.loss)
+                self.summary = tf.summary.merge_all()
+                tf_log_dir = "{}/{}_run-{}".format(self.tf_log_dir, self.name, timestr())
+                self.train_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)
             self.init = tf.global_variables_initializer()
             self.saver = tf.train.Saver()
-            self.loss_summary = tf.summary.scalar("Loss", self.loss)
-            self.summary = tf.summary.merge_all()
-            tf_log_dir = "{}/{}_run-{}".format(self.tf_log_dir, self.name, timestr())
-            self.train_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)
 
-    def _add_hidden_layer(self, input_tensor, unit, layer_name):
-        assert(unit.params), "Invalid unit.params"
-        with tf.name_scope(layer_name):
-            if (unit.noise_stddev is not None):
-                input_noisy = tf.cond(self.training,
-                                      lambda: input_tensor + tf.random_normal(tf.shape(input_tensor), stddev = unit.noise_stddev),
-                                      lambda: input_tensor)
-            elif (unit.dropout_rate is not None):
-                input_noisy = tf.layers.dropout(input_tensor, unit.dropout_rate, training=self.training)
-            else:
-                input_noisy = input_tensor
-            kernel_name = "{}_hidden/kernel:0".format(unit.name)
-            bias_name = "{}_hidden/bias:0".format(unit.name)
-            weights = tf.Variable(unit.params[kernel_name], name = "weights")
-            assert(weights.shape == (unit.n_inputs, unit.n_neurons)), "Wrong assumption about weight's shape"
-            biases = tf.Variable(unit.params[bias_name], name = "biases")
-            assert(biases.shape == (unit.n_neurons,)), "Wrong assumption about bias's shape"
-            pre_activations = tf.matmul(input_noisy, weights) + biases
-            if unit.hidden_activation is not None:
-                activations = unit.hidden_activation(pre_activations, name = "activations")
-            else:
-                activations = pre_activations
-            reg_loss = unit.regularizer(weights) if unit.regularizer else None
-            return activations, reg_loss          
-                    
+    def save(self, model_path):
+        with tf.Session(graph=self.graph) as sess:
+            self.init.run()
+            print("Saving model to {}...".format(model_path))
+            self.saver.save(sess, model_path)
+            print(">> Done")       
+            
     def fit(self, X_train, model_path, n_epochs, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         assert(self.training_op is not None), "Invalid self.training_op"
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
