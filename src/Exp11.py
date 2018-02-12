@@ -49,3 +49,5 @@ builder = StackBuilder(X_scaled,
 builder.max_search_trials = 1
 model_path = os.path.join(cache_dir, "stacked_autoencoder_final_model")
 autoencoder = builder.doit(model_path)
+
+

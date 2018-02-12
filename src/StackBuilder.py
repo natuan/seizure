@@ -9,7 +9,6 @@ class StackBuilder:
                  unit_type,
                  hidden_activation,
                  n_units,
-                 accepted_reconstruction_loss = 0.001,
                  l2_reg_range = None,
                  noise_stddev_range = None,
                  dropout_rate_range = None,
@@ -19,12 +18,11 @@ class StackBuilder:
         Ctor
         
         Params:
-        - unit_type: "ordinary", "noise", "dropout"
+        - unit_type: "ordinary", "denoise", "dropout"
         - hidden_activation: "softmax", "relu", "elu"
         - n_units: number of unit autoencoders
-        - accepted_reconstruction_loss: if the reconstruction loss <= the value of this param then the unit 
-        is considered acceptable. During the search for a hidden unit, the one that is acceptable
-        and with minimal number of hidden neurons would be prefered.
+        - accepted_reconstruction_loss: if specified and the reconstruction loss <= the value of this param then the unit 
+        is considered acceptable; otherwise, the search tries to find units with the lowest reconstruction loss
 
         Return: None
         """
@@ -34,7 +32,6 @@ class StackBuilder:
         self.unit_type = unit_type
         self.n_units = n_units
         self.hidden_activation = hidden_activation
-        self.accepted_reconstruction_loss = accepted_reconstruction_loss
         self.l2_reg_range = l2_reg_range
         self.noise_stddev_range = noise_stddev_range
         self.dropout_rate_range = dropout_rate_range
@@ -67,22 +64,142 @@ class StackBuilder:
     def _get_unit_name(self, prefix, n_inputs, n_neurons, regularizer=None, noise_stddev=None, dropout_rate=None):
         return "{}_inputs{}_neurons{}".format(prefix, n_inputs, n_neurons)
        
-    def search_ordinary_unit_helper(self, X, n_neurons, l2_reg_range=(0.001,0.01), n_trials = 0, search_logging = True):
+    def search_ordinary_unit_helper(self, X, n_neurons, l2_reg_range=(0.001,0.01), accepted_reconstruction_loss = None, n_trials = 0, search_logging = True):
+        """
+        Recursively search for ordinary autoencoder unit with a given number of hidden neurons
+
+        Params:
+
+        Return: (unit, model_path, reconstruction_loss)
+        """
         min_reg, max_reg = l2_reg_range
         if n_trials > self.max_search_trials or min_reg > max_reg:
-            return None, None
+            return None, None, None
         n_inputs = X.shape[1]
         reg = (min_reg + max_reg) / 2
         if search_logging:
             with open(self.search_log_file, "a") as f:
-                f.write("\t>> Training unit of {} neurons, regularizer {}, trial {}...\n".format(n_neurons, reg, n_trials))
+                f.write("\t>> Constructing and training unit of {} neurons, regularizer {}, trial {}...\n".format(n_neurons, reg, n_trials))
         name = unit_config_str("ord", n_inputs, n_neurons, hidden_activation=self.hidden_activation, regularizer_value=reg)
-        model_path = os.path.join(self.cache_dir, "{}.model".format(name))
+        model_path = os.path.join(self.cache_dir, name, "{}.model".format(name))
         unit = UnitAutoencoder(name=name,
                                n_inputs=n_inputs,
                                n_neurons=n_neurons,
                                hidden_activation=self.hidden_activation,
                                regularizer=tf.contrib.layers.l2_regularizer(reg),
+                               tf_log_dir=self.tf_log_dir)
+        unit.fit(X, n_epochs=self.n_epochs, model_path=model_path, batch_size=self.batch_size,
+                 checkpoint_steps=self.checkpoint_steps,
+                 seed=self.seed)
+        [reconstruction_loss] = unit.restore_and_eval(X, model_path=model_path, varlist=["reconstruction_loss"])
+        if search_logging:
+            with open(self.search_log_file, "a") as f:
+                f.write("\t>> Reconstruction loss: {}...\n".format(reconstruction_loss))   
+        if accepted_reconstruction_loss is None or reconstruction_loss <= accepted_reconstruction_loss:
+            if search_logging:
+                with open(self.search_log_file, "a") as f:
+                    f.write("\t>> Accepted reconstruction loss\n")
+                    f.write("\t>> Searching for better unit with the same n_neurons {} and reconstruction loss <= {}...\n".format(n_neurons, reconstruction_loss))
+
+            # Recursively tries to find another unit with at least the "reconstruction_loss" but using stricter
+            # L2 regularization (which is assumed to be better)
+            better, better_model_path, better_reconstruction_loss = self.search_ordinary_unit_helper(X, n_neurons, l2_reg_range=(reg + self.epsilon, max_reg),
+                                                                                                     accepted_reconstruction_loss=reconstruction_loss,
+                                                                                                     n_trials=n_trials+1, search_logging=search_logging)
+            if better is not None:
+                assert(better_reconstruction_loss <= reconstruction_loss), "Invalid reconstruction loss"
+                if search_logging:
+                    with open(self.search_log_file, "a") as f:
+                        f.write("\t>> Better unit found\n")
+                return better, better_model_path, better_reconstruction_loss
+            else:
+                if search_logging:
+                    with open(self.search_log_file, "a") as f:
+                        f.write("\t>> Better unit not found\n")
+                return unit, model_path, reconstruction_loss
+        else:
+            return None, None, None
+
+    def search_ordinary_unit(self, X, n_neurons, l2_reg_range=(0.001,0.01), search_logging = True):
+        min_reg, max_reg = l2_reg_range
+        if search_logging:
+            with open(self.search_log_file, "a") as f:
+                f.write("\nSearching for ordinary unit of {} neurons, regularizer ({}, {})\n".format(n_neurons, min_reg, max_reg))
+        return self.search_ordinary_unit_helper(X, n_neurons, l2_reg_range, n_trials=0, search_logging=search_logging)
+
+    def search_gaussian_denoise_unit_helper(self, X, n_neurons, noise_stddev_range=(0.1,0.5), accepted_reconstruction_loss = None, n_trials = 0, search_logging = True):
+        min_noise_stddev, max_noise_stddev = noise_stddev_range
+        if n_trials > self.max_search_trials or min_noise_stddev > max_noise_stddev:
+            return None, None, None
+        n_inputs = X.shape[1]
+        noise_stddev = (min_noise_stddev + max_noise_stddev) / 2
+        if search_logging:
+            with open(self.search_log_file, "a") as f:
+                f.write("\t>> Constructing and training unit of {} neurons, noise_stddev {}, trial {}...\n".format(n_neurons, noise_stddev, n_trials))
+        name = unit_config_str("denoise", n_inputs, n_neurons, hidden_activation=self.hidden_activation, noise_stddev=noise_stddev)
+        model_path = os.path.join(self.cache_dir, name, "{}.model".format(name))
+        unit = UnitAutoencoder(name=name,
+                               n_inputs=n_inputs,
+                               n_neurons=n_neurons,
+                               hidden_activation=self.hidden_activation,
+                               noise_stddev=noise_stddev,
+                               tf_log_dir=self.tf_log_dir)
+        unit.fit(X, n_epochs=self.n_epochs, model_path=model_path, batch_size=self.batch_size,
+                 checkpoint_steps=self.checkpoint_steps,
+                 seed=self.seed)
+        [reconstruction_loss] = unit.restore_and_eval(X, model_path=model_path, varlist=["reconstruction_loss"])
+        if search_logging:
+            with open(self.search_log_file, "a") as f:
+                f.write("\t>> Reconstruction loss: {}...\n".format(reconstruction_loss))            
+        if accepted_reconstruction_loss is None or reconstruction_loss <= accepted_reconstruction_loss:
+            if search_logging:
+                with open(self.search_log_file, "a") as f:
+                    f.write("\t>> Accepted reconstruction loss\n")
+                    f.write("\t>> Searching for better unit with the same n_neurons {} and reconstruction loss <= {}...\n".format(n_neurons, reconstruction_loss))
+
+            # Recursively tries to find another unit with at least the "reconstruction_loss" but with higher level of noises to the input                    
+            better, better_model_path, better_reconstruction_loss = self.search_gaussian_denoise_unit_helper(X, n_neurons,
+                                                                                                             noise_stddev_range=(noise_stddev + self.epsilon, max_noise_stddev),
+                                                                                                             accepted_reconstruction_loss=reconstruction_loss,
+                                                                                                             n_trials=n_trials+1, search_logging=False)
+            if better is not None:
+                assert(better_reconstruction_loss <= reconstruction_loss), "Invalid reconstruction loss"
+                if search_logging:
+                    with open(self.search_log_file, "a") as f:
+                        f.write("\t>> Better unit found\n")
+                return better, better_model_path, better_reconstruction_loss
+            else:
+                if search_logging:
+                    with open(self.search_log_file, "a") as f:
+                        f.write("\t>> Better unit not found\n")                
+                return unit, model_path, reconstruction_loss
+        else:
+            return None, None
+    
+    def search_gaussian_denoise_unit(self, X, n_neurons, noise_stddev_range=(0.1,0.5), search_logging = True):
+        min_noise_stddev, max_noise_stddev = noise_stddev_range
+        if search_logging:
+            with open(self.search_log_file, "a") as f:
+                f.write("\n{}\n".format(timestr()))
+                f.write("Searching for Gaussian denoise unit of {} neurons, noise_stddev ({}, {})\n".format(n_neurons, min_noise_stddev, max_noise_stddev))
+        return self.search_gaussian_denoise_unit_helper(X, n_neurons, noise_stddev_range, n_trials=0, search_logging=search_logging)
+
+    def search_dropout_unit_helper(self, X, n_neurons, dropout_rate_range=(0.1,0.5), n_trials = 0, search_logging = True):
+        min_dropout_rate, max_dropout_rate = dropout_rate_range
+        if n_trials > self.max_search_trials or min_dropout_rate > max_dropout_rate:
+            return None, None
+        n_inputs = X.shape[1]
+        dropout_rate = (min_dropout_rate + max_dropout_rate) / 2
+        if search_logging:
+            with open(self.search_log_file, "a") as f:
+                f.write("\t>> Training unit of {} neurons, dropout_rate {}, trial {}...\n".format(n_neurons, dropout_rate, n_trials))
+        name = unit_config_str("dropout", n_inputs, n_neurons, hidden_activation=self.hidden_activation, dropout_rate=dropout_rate)
+        model_path = os.path.join(self.cache_dir, name, "{}.model".format(name))
+        unit = UnitAutoencoder(name=name,
+                               n_inputs=n_inputs,
+                               n_neurons=n_neurons,
+                               hidden_activation=self.hidden_activation,
+                               dropout_rate=dropout_rate,
                                tf_log_dir=self.tf_log_dir)
         unit.fit(X, n_epochs=self.n_epochs, model_path=model_path, batch_size=self.batch_size,
                  checkpoint_steps=self.checkpoint_steps,
@@ -96,7 +213,9 @@ class StackBuilder:
                 with open(self.search_log_file, "a") as f:
                     f.write("\t>> Accepted reconstruction loss\n")
                     f.write("\t>> Searching for better unit...\n")
-            better, better_model_path = self.search_ordinary_unit_helper(X, n_neurons, l2_reg_range=(reg + self.epsilon, max_reg), n_trials=n_trials+1, search_logging=False)
+            better, better_model_path = self.search_dropout_unit_helper(X, n_neurons,
+                                                                        dropout_rate_range=(dropout_rate + self.epsilon, max_dropout_rate),
+                                                                        n_trials=n_trials+1, search_logging=False)
             if better is not None:
                 if search_logging:
                     with open(self.search_log_file, "a") as f:
@@ -109,68 +228,16 @@ class StackBuilder:
                 return unit, model_path
         else:
             return None, None
-
-    def search_ordinary_unit(self, X, n_neurons, l2_reg_range=(0.001,0.01), search_logging = True):
-        min_reg, max_reg = l2_reg_range
+    
+    def search_dropout_unit(self, X, n_neurons, dropout_rate_range=(0.1,0.5), search_logging = True):
+        min_dropout_rate, max_dropout_rate = dropout_rate_range
         if search_logging:
             with open(self.search_log_file, "a") as f:
                 f.write("\n{}\n".format(timestr()))
-                f.write("Searching for ordinary unit of {} neurons, regularizer ({}, {})\n".format(n_neurons, min_reg, max_reg))
-        return self.search_ordinary_unit_helper(X, n_neurons, l2_reg_range, n_trials=0, search_logging=search_logging)
-            
-    def search_gaussian_denoise_unit(self, X, n_neurons, noise_stddev_range=(0.1,0.5), max_search_trials=128):
-        n_trials = 0
-        min_noise_stddev, max_noise_stddev = noise_stddev_range
-        best_unit = None
-        while n_trials < self.max_search_trials and min_noise_stddev <= max_noise_stddev:
-            noise_stddev = (min_noise_stddev + max_noise_stddev) / 2
-            name = self._get_unit_name(n_inputs, n_neurons, noise_stddev=noise_stddev)
-            unit = UnitAutoencoder(name=name,
-                                   n_inputs=X.shape[1],
-                                   n_neurons=n_neurons,
-                                   hidden_activation=self.hidden_activation,
-                                   regularizer=None,
-                                   noise_stddev=noise_stddev,
-                                   tf_log_dir=self.tf_log_dir)
-            unit.fit(self.X, n_epochs=self.n_epochs, batch_size=self.batch_size,
-                     checkpoint_steps=self.checkpoint_steps,
-                     seed=self.seed)
-            [reconstruction_loss] = unit.eval(self.X, varlist=["reconstruction_loss"])
-            if reconstruction_loss <= self.accepted_reconstruction_loss:
-                best_unit = unit if best_unit is None or best_unit.n_neurons > unit.n_neurons else best_unit
-                min_noise_stddev = noise_stddev + self.epsilon
-            else:
-                max_noise_stddev = noise_stddev - self.epsilon
-            n_trials += 1
-        return best_unit
+                f.write("Searching for dropout denoise unit of {} neurons, dropout rate ({}, {})\n".format(n_neurons, min_dropout_rate, max_dropout_rate))
+        return self.search_dropout_unit_helper(X, n_neurons, dropout_rate_range, n_trials=0, search_logging=search_logging)
     
-    def search_dropout_denoise_unit(self, X, n_neurons, dropout_rate_range=(0.1,0.5), max_search_trials=128):
-        n_trials = 0
-        min_dropout_rate, max_dropout_rate = dropout_rate_range
-        best_unit = None
-        while n_trials < self.max_search_trials and min_drop_rate <= max_drop_rate:
-            dropout_rate = (min_dropout_rate + max_dropout_rate) / 2
-            name = self._get_unit_name(n_inputs, n_neurons, noise_stddev=noise_stddev)
-            unit = UnitAutoencoder(name=name,
-                                   n_inputs=X.shape[1],
-                                   n_neurons=n_neurons,
-                                   hidden_activation=self.hidden_activation,
-                                   regularizer=None,
-                                   noise_stddev=noise_stddev,
-                                   tf_log_dir=self.tf_log_dir)
-            unit.fit(self.X, n_epochs=self.n_epochs, batch_size=self.batch_size,
-                     checkpoint_steps=self.checkpoint_steps,
-                     seed=self.seed)
-            [reconstruction_loss] = unit.eval(self.X, varlist=["reconstruction_loss"])
-            if reconstruction_loss <= self.accepted_reconstruction_loss:
-                best_unit = unit if best_unit is None or best_unit.n_neurons > unit.n_neurons else best_unit
-                min_noise_stddev = noise_stddev + self.epsilon
-            else:
-                max_noise_stddev = noise_stddev - self.epsilon
-            n_trials += 1   
-        return best_unit
-    
-    def search_unit_helper(self, X, n_neurons_range, n_trials = 0):
+    def search_unit_helper(self, X, n_neurons_range, accepted_reconstruction_loss, n_trials = 0):
         """
         Search for a unit to reconstruct a given input with the number of hidden
         neurons within a given range
@@ -185,11 +252,17 @@ class StackBuilder:
         n_inputs = X.shape[1]
         n_neurons = int((min_neurons + max_neurons)/2)
         if self.unit_type == "ordinary":
-            unit, model_path = self.search_ordinary_unit(X, n_neurons, l2_reg_range=self.l2_reg_range)
-        elif self.unit_type == "noise":
-            unit = self.search_gaussian_denoise_unit(X, n_neurons, noise_stddev_range=self.noise_stddev_range)
+            unit, model_path, reconstructed_loss = self.search_ordinary_unit(X, n_neurons, l2_reg_range=self.l2_reg_range,
+                                                                             accepted_reconstruction_loss=accepted_reconstruction_loss)
+        elif self.unit_type == "denoise":
+            unit, model_path, reconstructed_loss = self.search_gaussian_denoise_unit(X, n_neurons, noise_stddev_range=self.noise_stddev_range,
+                                                                                     accepted_reconstruction_loss=accepted_reconstruction_loss)
         elif self.unit_type == "dropout":
-            unit = self.search_dropout_denoise_unit(X, n_neurons, dropout_rate_range=self.dropout_rate_range)
+            unit, model_path, reconstructed_loss = self.search_dropout_unit(X, n_neurons, dropout_rate_range=self.dropout_rate_range,
+                                                                            accepted_reconstruction_loss=accepted_reconstruction_loss)
+        else:
+            raise ValueError("Invalid unit type {}".format(unit_type))
+        assert(reconstruction_loss <= accepted_reconstruction_loss), "Invalid reconstruction loss"
         if unit is not None:
             left, left_model_path = self.search_unit_helper(X, n_neurons_range=(min_neurons, n_neurons - 1), n_trials=n_trials+1)
             if left is not None:
@@ -199,8 +272,8 @@ class StackBuilder:
         else:
             return self.search_unit_helper(X, n_neurons_range=(n_neurons + 1, max_neurons), n_trials=n_trials+1)
 
-    def search_unit(self, X, n_neurons_range):
-        return self.search_unit_helper(X, n_neurons_range)
+    def search_unit(self, X, n_neurons_range, accepted_reconstruction_loss):
+        return self.search_unit_helper(X, n_neurons_range, accepted_reconstruction_loss)
         
     def doit(self, model_path = None, search_logging = True):
         self.autoencoder = StackedAutoencoders(name=self.name, cache_dir=self.cache_dir, tf_log_dir=self.tf_log_dir)
@@ -231,7 +304,7 @@ class StackBuilder:
             self.autoencoder.finalize()
             if search_logging:
                 with open(self.search_log_file, "a") as f:
-                    f.write("SAVING STACKED AUTOENCODER TO {}\n".format(model_path))
+                    f.write("\nSAVING STACKED AUTOENCODER TO {}\n".format(model_path))
             self.autoencoder.save(model_path)
         return self.autoencoder
         

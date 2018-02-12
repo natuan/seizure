@@ -20,6 +20,39 @@ def unit_config_str(prefix,
             s += "_elu"
         elif hidden_activation == tf.nn.relu:
             s += "_relu"
+        elif hidden_activation == tf.nn.tanh:
+            s += "_tanh"
+        else:
+            raise ValueError("Invalid hidden activation function")
+    if regularizer_value is not None: 
+        s += "_reg{}".format(regularizer_value)
+    if noise_stddev is not None:
+        s += "_noise{}".format(noise_stddev)
+    if dropout_rate is not None:
+        s += "_drop{}".format(dropout_rate)
+    return s
+
+def config_str(prefix = None,
+               n_inputs = None,
+               n_neurons = None,
+               hidden_activation = None,
+               regularizer_value = None,
+               noise_stddev = None,
+               dropout_rate = None):
+    s = "{}".format(prefix) if prefix is not None else ""
+    if n_inputs is not None:
+        s += "_inputs{}".format(n_inputs)
+    if n_neurons is not None:
+        s += "_neurons{}".format(n_neurons)
+    if hidden_activation is not None:
+        if hidden_activation == tf.nn.softmax:
+            s += "_softmax"
+        elif hidden_activation == tf.nn.elu:
+            s += "_elu"
+        elif hidden_activation == tf.nn.relu:
+            s += "_relu"
+        elif hidden_activation == tf.nn.tanh:
+            s += "_tanh"
         else:
             raise ValueError("Invalid hidden activation function")
     if regularizer_value is not None: 

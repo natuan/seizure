@@ -15,8 +15,6 @@ from StackBuilder import *
 from Classifier import Classifier
 from Utils import *
 
-
-
 # Load the original data set, and creating segment data
 # using default number of segments and target map
 # (See DataSet constructor)
@@ -29,24 +27,27 @@ X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache
 X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.2_rand0_TEST.csv"))
 
 scaler = MinMaxScaler(feature_range=(-1,1))
-X_scaled = scaler.fit_transform(X_train) if (scaler) else X_train
+noise_stddev = 0.3
+n_inputs = X_train.shape[1]
+n_neurons_range = [250]
+hidden_activation = tf.nn.tanh
+n_epochs = 10000
+batch_size = 256
+checkpoint_steps = 100
+seed = 0
 
-min_noise_stddev = 0.1
-max_noise_stddev = 0.5
-builder_name = "denoise_builder_01"
-builder_path = os.path.join(root_dir, builder_name)
-cache_dir = os.path.join(builder_path, "cache")
-tf_log_dir = os.path.join(builder_path, "tf_logs")
-builder = StackBuilder(X_scaled,
-                       name="builder",
-                       unit_type="denoise",
-                       hidden_activation=tf.nn.relu,
-                       n_units=2,
-                       accepted_reconstruction_loss=0.01,
-                       noise_stddev_range=(min_noise_stddev, max_noise_stddev),
-                       cache_dir=cache_dir,
-                       tf_log_dir=tf_log_dir)
-builder.max_search_trials = 1
-model_path = os.path.join(cache_dir, "stacked_autoencoder_final_model")
-autoencoder = builder.doit(model_path)
-
+name = config_str(prefix="denoise", n_inputs=n_inputs, hidden_activation=hidden_activation, noise_stddev=noise_stddev)
+cache_dir = os.path.join(root_dir, name)
+tf_log_dir = os.path.join(cache_dir, "tf_logs")
+generate_unit_autoencoders(X_train,
+                           y_train,
+                           scaler,
+                           n_neurons_range,
+                           hidden_activation=hidden_activation,
+                           noise_stddev=noise_stddev,
+                           n_epochs=n_epochs,
+                           batch_size=batch_size,
+                           checkpoint_steps=checkpoint_steps,
+                           seed=seed,
+                           cache_dir=cache_dir,
+                           tf_log_dir=tf_log_dir)
