@@ -72,9 +72,9 @@ class UnitAutoencoder:
             assert(hidden_weights.shape == (n_inputs, n_neurons)), "Invalid hidden weight shape"
             hidden_biases = trainable_vars["{}_hidden/bias:0".format(self.name)]
             for neuron_idx in range(n_neurons):
-                self._variable_summaries(hidden_weights[neuron_idx], "weights_hidden_neuron_{}".format(neuron_idx))
-                self._variable_summaries(hidden_weights[neuron_idx], "bias_hidden_neuron_{}".format(neuron_idx))
-                self._variable_summaries(self.hidden[:,neuron_idx], "activation_hidden_neuron_{}".format(neuron_idx))
+                self._variable_summaries(hidden_weights[:, neuron_idx], "weights_hidden_neuron_{}".format(neuron_idx))
+                self._variable_summaries(hidden_biases[neuron_idx], "bias_hidden_neuron_{}".format(neuron_idx))
+                self._variable_summaries(self.hidden[:, neuron_idx], "activation_hidden_neuron_{}".format(neuron_idx))
             
             self.summary = tf.summary.merge_all()
             tf_log_dir = "{}/{}_run-{}".format(tf_log_dir, self.name, timestr())
@@ -510,14 +510,14 @@ def generate_unit_autoencoders(X_train,
                                regularizer_value=regularizer_value,
                                noise_stddev=noise_stddev,
                                dropout_rate=dropout_rate)
-        print("Constructing and training unit {}".format(unit_name))
+        print("\n\n*** Constructing and training unit {} ***".format(unit_name))
         unit_cache_dir = os.path.join(cache_dir, unit_name)
         if not os.path.exists(unit_cache_dir):
             os.makedirs(unit_cache_dir)
         unit_tf_log_dir = tf_log_dir
         if not os.path.exists(unit_tf_log_dir):
             os.makedirs(unit_tf_log_dir)
-        regularizer = tf.contrib.layers.l2_regularizer(regularizer_value) if regularizer_value is not None else None
+        unit_regularizer = tf.contrib.layers.l2_regularizer(regularizer_value) if regularizer_value is not None else None
         unit = UnitAutoencoder(unit_name,
                                n_inputs,
                                n_neurons,
@@ -525,7 +525,7 @@ def generate_unit_autoencoders(X_train,
                                dropout_rate=dropout_rate,
                                hidden_activation=hidden_activation,
                                output_activation=output_activation,
-                               regularizer=regularizer,
+                               regularizer=unit_regularizer,
                                initializer=initializer,
                                optimizer=optimizer,                               
                                tf_log_dir=unit_tf_log_dir)

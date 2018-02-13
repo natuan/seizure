@@ -27,9 +27,9 @@ X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache
 X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.2_rand0_TEST.csv"))
 
 scaler = MinMaxScaler(feature_range=(-1,1))
-noise_stddev = 0.3
+noise_stddev = 0.1
 n_inputs = X_train.shape[1]
-n_neurons_range = [5]
+n_neurons_range = [200]
 hidden_activation = tf.nn.tanh
 n_epochs = 1000
 batch_size = 256
