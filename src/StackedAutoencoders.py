@@ -142,6 +142,10 @@ class UnitAutoencoder:
             print(">> Done")
             return sess.run(self.loss, feed_dict={self.X: X_train})
 
+    def hidden_weights(self):
+        assert(self.params is not None), "Invalid self.params"
+        return self.params["{}_hidden/kernel:0".format(self.name)]
+        
     def restore(self, model_path):
         print("Restoring model from {}...".format(model_path))
         if self.params is not None:
@@ -482,7 +486,9 @@ def generate_unit_autoencoders(X_train,
                                n_epochs = 5000,
                                batch_size = 256,
                                checkpoint_steps = 100,
-                               seed = 0,                               
+                               hidden_weights_size_to_plot = 1.0,
+                               reconstructed_examples_per_class_to_plot = 10,
+                               seed = 0,                       
                                cache_dir = "../cache",
                                tf_log_dir = "../tf_logs"):
     n_inputs = X_train.shape[1]
@@ -536,7 +542,10 @@ def generate_unit_autoencoders(X_train,
         unit_plot_dir = os.path.join(unit_cache_dir, "plots")
         unit_output_dir = os.path.join(unit_plot_dir, "outputs")
         X_recon = scaler.inverse_transform(outputs)
-        plot_reconstructed_outputs(X_train, y_train, X_recon, size_per_class=10, plot_dir_path=unit_plot_dir_path, seed=seed+10):
+        plot_reconstructed_outputs(X_train, y_train, X_recon, size_per_class=reconstructed_examples_per_class_to_plot,
+                                   plot_dir_path=unit_plot_dir_path, seed=seed+10)
+        hidden_weights = unit.hidden_weights()
+        plot_hidden_weights(hidden_weights, size=hidden_weights_size_to_plot, plot_dir_path, seed =seed+20)
         
     columns = ["reconstruction_loss", "model_name"]
     df = pd.DataFrame.from_dict(rows, orient="index")
