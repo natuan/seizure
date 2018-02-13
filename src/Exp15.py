@@ -29,9 +29,9 @@ X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_d
 scaler = MinMaxScaler(feature_range=(-1,1))
 noise_stddev = 0.3
 n_inputs = X_train.shape[1]
-n_neurons_range = [1]
+n_neurons_range = [5]
 hidden_activation = tf.nn.tanh
-n_epochs = 5
+n_epochs = 1000
 batch_size = 256
 checkpoint_steps = 100
 seed = 0

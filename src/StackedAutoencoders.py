@@ -54,7 +54,7 @@ class UnitAutoencoder:
                 X_noisy = tf.layers.dropout(self.X, dropout_rate, training=self.training)
             else:
                 X_noisy = self.X
-            self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))
+            self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))            
             self.outputs = tf.layers.dense(self.hidden, n_inputs, activation=output_activation, kernel_regularizer = regularizer, name="{}_outputs".format(self.name))
             self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)                
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
@@ -74,7 +74,7 @@ class UnitAutoencoder:
             for neuron_idx in range(n_neurons):
                 self._variable_summaries(hidden_weights[neuron_idx], "weights_hidden_neuron_{}".format(neuron_idx))
                 self._variable_summaries(hidden_weights[neuron_idx], "bias_hidden_neuron_{}".format(neuron_idx))
-                tf.summary.histogram("activation_hidden_neuron_{}".format(neuron_idx), self.hidden[neuron_idx])
+                self._variable_summaries(self.hidden[:,neuron_idx], "activation_hidden_neuron_{}".format(neuron_idx))
             
             self.summary = tf.summary.merge_all()
             tf_log_dir = "{}/{}_run-{}".format(tf_log_dir, self.name, timestr())
