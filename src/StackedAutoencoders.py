@@ -5,8 +5,10 @@ from tensorflow.python import debug as tf_debug
 from tqdm import *
 from datetime import datetime
 import matplotlib.pyplot as plt
+import pandas as pd
 
-from Utils import timestr
+from Visual import *
+from Utils import *
 
 class UnitAutoencoder:
     def __init__(self,
@@ -69,8 +71,6 @@ class UnitAutoencoder:
             hidden_weights = trainable_vars["{}_hidden/kernel:0".format(self.name)]
             assert(hidden_weights.shape == (n_inputs, n_neurons)), "Invalid hidden weight shape"
             hidden_biases = trainable_vars["{}_hidden/bias:0".format(self.name)]
-            import pdb
-            pdb.set_trace()
             for neuron_idx in range(n_neurons):
                 self._variable_summaries(hidden_weights[neuron_idx], "weights_hidden_neuron_{}".format(neuron_idx))
                 self._variable_summaries(hidden_weights[neuron_idx], "bias_hidden_neuron_{}".format(neuron_idx))
@@ -480,7 +480,7 @@ def generate_unit_autoencoders(X_train,
                                dropout_rate = None,
                                hidden_activation = tf.nn.softmax,
                                output_activation = None,
-                               regularizer_value = 0.01,
+                               regularizer_value = None,
                                initializer = tf.contrib.layers.variance_scaling_initializer(),
                                optimizer = tf.train.AdamOptimizer(0.001),
                                n_epochs = 5000,
@@ -517,6 +517,7 @@ def generate_unit_autoencoders(X_train,
         unit_tf_log_dir = tf_log_dir
         if not os.path.exists(unit_tf_log_dir):
             os.makedirs(unit_tf_log_dir)
+        regularizer = tf.contrib.layers.l2_regularizer(regularizer_value) if regularizer_value is not None else None
         unit = UnitAutoencoder(unit_name,
                                n_inputs,
                                n_neurons,
@@ -524,7 +525,7 @@ def generate_unit_autoencoders(X_train,
                                dropout_rate=dropout_rate,
                                hidden_activation=hidden_activation,
                                output_activation=output_activation,
-                               regularizer=tf.contrib.layers.l2_regularizer(regularizer_value),
+                               regularizer=regularizer,
                                initializer=initializer,
                                optimizer=optimizer,                               
                                tf_log_dir=unit_tf_log_dir)
@@ -535,18 +536,19 @@ def generate_unit_autoencoders(X_train,
                  batch_size=batch_size,
                  checkpoint_steps=checkpoint_steps,
                  seed=seed)
-        [reconstruction_loss, outputs] = unit.eval(X_scaled, ["reconstruction_loss", "outputs"])
+        [reconstruction_loss, outputs] = unit.restore_and_eval(X_scaled, unit_model_path, ["reconstruction_loss", "outputs"])
         row = [reconstruction_loss, unit_name]
         rows[n_neurons] = row
         assert(outputs.shape == X_scaled.shape), "Invalid output shape"
         unit_plot_dir = os.path.join(unit_cache_dir, "plots")
-        unit_output_dir = os.path.join(unit_plot_dir, "outputs")
+        unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
         X_recon = scaler.inverse_transform(outputs)
         plot_reconstructed_outputs(X_train, y_train, X_recon, size_per_class=reconstructed_examples_per_class_to_plot,
-                                   plot_dir_path=unit_plot_dir_path, seed=seed+10)
+                                   plot_dir_path=unit_reconstructed_dir, seed=seed+10)
         hidden_weights = unit.hidden_weights()
-        plot_hidden_weights(hidden_weights, size=hidden_weights_size_to_plot, plot_dir_path, seed =seed+20)
-        
+        unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
+        plot_hidden_weights(hidden_weights, hidden_weights_size_to_plot, unit_hidden_weights_dir, seed =seed+20)
+
     columns = ["reconstruction_loss", "model_name"]
     df = pd.DataFrame.from_dict(rows, orient="index")
     df.index.name = "n_neurons"
