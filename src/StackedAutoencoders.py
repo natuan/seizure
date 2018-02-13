@@ -476,6 +476,7 @@ def generate_unit_autoencoders(X_train,
                                y_train,
                                scaler,
                                n_neurons_range,
+                               n_folds = 10,
                                noise_stddev = None,
                                dropout_rate = None,
                                hidden_activation = tf.nn.softmax,
@@ -492,7 +493,6 @@ def generate_unit_autoencoders(X_train,
                                cache_dir = "../cache",
                                tf_log_dir = "../tf_logs"):
     n_inputs = X_train.shape[1]
-    X_scaled = scaler.fit_transform(X_train)
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
     if noise_stddev is not None:
@@ -501,61 +501,93 @@ def generate_unit_autoencoders(X_train,
         prefix = "dropout"
     else:
         prefix = "ordinary"
-    rows = {}
+    all_run_rows = {}
+    all_run_idx = 0
+    avg_recon_loss_rows = {}
+    all_indices = np.random.permutation(len(X_train))
+    fold_sz = len(all_indices) / n_folds
     for n_neurons in n_neurons_range:
-        unit_name = config_str(prefix,
-                               n_inputs,
-                               n_neurons,
-                               hidden_activation=hidden_activation,
-                               regularizer_value=regularizer_value,
-                               noise_stddev=noise_stddev,
-                               dropout_rate=dropout_rate)
-        print("\n\n*** Constructing and training unit {} ***".format(unit_name))
-        unit_cache_dir = os.path.join(cache_dir, unit_name)
-        if not os.path.exists(unit_cache_dir):
-            os.makedirs(unit_cache_dir)
-        unit_tf_log_dir = tf_log_dir
-        if not os.path.exists(unit_tf_log_dir):
-            os.makedirs(unit_tf_log_dir)
-        unit_regularizer = tf.contrib.layers.l2_regularizer(regularizer_value) if regularizer_value is not None else None
-        unit = UnitAutoencoder(unit_name,
-                               n_inputs,
-                               n_neurons,
-                               noise_stddev=noise_stddev,
-                               dropout_rate=dropout_rate,
-                               hidden_activation=hidden_activation,
-                               output_activation=output_activation,
-                               regularizer=unit_regularizer,
-                               initializer=initializer,
-                               optimizer=optimizer,                               
-                               tf_log_dir=unit_tf_log_dir)
-        unit_model_path = os.path.join(unit_cache_dir, "{}.model".format(unit_name))
-        unit.fit(X_scaled,
-                 n_epochs=n_epochs,
-                 model_path=unit_model_path,
-                 batch_size=batch_size,
-                 checkpoint_steps=checkpoint_steps,
-                 seed=seed)
-        [reconstruction_loss, outputs] = unit.restore_and_eval(X_scaled, unit_model_path, ["reconstruction_loss", "outputs"])
-        row = [reconstruction_loss, unit_name]
-        rows[n_neurons] = row
-        assert(outputs.shape == X_scaled.shape), "Invalid output shape"
-        unit_plot_dir = os.path.join(unit_cache_dir, "plots")
-        unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
-        X_recon = scaler.inverse_transform(outputs)
-        plot_reconstructed_outputs(X_train, y_train, X_recon, size_per_class=reconstructed_examples_per_class_to_plot,
-                                   plot_dir_path=unit_reconstructed_dir, seed=seed+10)
-        hidden_weights = unit.hidden_weights()
-        unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
-        plot_hidden_weights(hidden_weights, hidden_weights_size_to_plot, unit_hidden_weights_dir, seed =seed+20)
+        avg_recon_loss = 0
+        for fold_idx in range(n_folds):
+            unit_name = config_str(prefix,
+                                   n_inputs,
+                                   n_neurons,
+                                   hidden_activation=hidden_activation,
+                                   regularizer_value=regularizer_value,
+                                   noise_stddev=noise_stddev,
+                                   dropout_rate=dropout_rate)
+            unit_name += "_fold{}".format(fold_idx)
+            print("\n\n*** Constructing and training unit {}, fold {}/{} ***".format(unit_name, fold_idx+1, n_folds))
+            unit_cache_dir = os.path.join(cache_dir, unit_name)
+            if not os.path.exists(unit_cache_dir):
+                os.makedirs(unit_cache_dir)
+            unit_tf_log_dir = tf_log_dir
+            if not os.path.exists(unit_tf_log_dir):
+                os.makedirs(unit_tf_log_dir)
+            unit_regularizer = tf.contrib.layers.l2_regularizer(regularizer_value) if regularizer_value is not None else None
+            unit = UnitAutoencoder(unit_name,
+                                   n_inputs,
+                                   n_neurons,
+                                   noise_stddev=noise_stddev,
+                                   dropout_rate=dropout_rate,
+                                   hidden_activation=hidden_activation,
+                                   output_activation=output_activation,
+                                   regularizer=unit_regularizer,
+                                   initializer=initializer,
+                                   optimizer=optimizer,                               
+                                   tf_log_dir=unit_tf_log_dir)
+            unit_model_path = os.path.join(unit_cache_dir, "{}.model".format(unit_name))
+            fold_start_idx = int(fold_idx * fold_sz)
+            fold_end_idx = min(fold_start_idx + fold_sz, len(all_indices))
+            X_train_indices = all_indices[:,fold_start_idx] + all_indices[fold_end_idx:]
+            X_valid_indices = all_indices[fold_start_idx:fold_end_idx]
+            X_train_scaled = scaler.fit_transform(X_train[X_train_indices])
+            unit.fit(X_train_scaled,
+                     n_epochs=n_epochs,
+                     model_path=unit_model_path,
+                     batch_size=batch_size,
+                     checkpoint_steps=checkpoint_steps,
+                     seed=seed)
+            
+            [reconstruction_loss, outputs] = unit.restore_and_eval(X_train_scaled, unit_model_path, ["reconstruction_loss", "outputs"])
+            all_run_row = [n_neurons, fold_idx, reconstruction_loss, unit_name]
+            all_run_rows[all_run_idx] = all_run_row
+            all_run_idx += 1
+            assert(outputs.shape == X_train_scaled.shape), "Invalid output shape"
+            unit_plot_dir = os.path.join(unit_cache_dir, "plots")
+            unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
+            X_recon = scaler.inverse_transform(outputs)
+            plot_reconstructed_outputs(X_train[X_train_indices], y_train[X_train_indices], X_recon, size_per_class=reconstructed_examples_per_class_to_plot,
+                                       plot_dir_path=unit_reconstructed_dir, seed=seed+10)
+            hidden_weights = unit.hidden_weights()
+            unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
+            plot_hidden_weights(hidden_weights, hidden_weights_size_to_plot, unit_hidden_weights_dir, seed =seed+20)
 
-    columns = ["reconstruction_loss", "model_name"]
-    df = pd.DataFrame.from_dict(rows, orient="index")
-    df.index.name = "n_neurons"
-    df.columns = columns
-    result_file_path = os.path.join(cache_dir, "results.csv")
+            [valid_reconstruction_loss] = unit.restore_and_eval(X_train[X_valid_indices], unit_model_path, ["reconstruction_loss"])
+            avg_recon_loss += valid_reconstruction_loss
+        avg_recon_loss /= n_folds
+        avg_recon_loss_rows[n_neurons] = avg_recon_loss
+            
+    columns = ["n_neurons", "fold_idx", "reconstruction_loss", "model_name"]
+    all_runs_df = pd.DataFrame.from_dict(all_run_rows, orient="index")
+    all_runs_df.index.name = "Idx"
+    all_runs_df.columns = columns
+    result_file_path = os.path.join(cache_dir, "results_all_runs.csv")
     if os.path.exists(result_file_path):
         existing_df = pd.DataFrame.from_csv(result_file_path, index_col = 0)
-        df = df.append(existing_df)
-    df.sort_index(inplace=True)
-    df.to_csv(result_file_path)
+        all_runs_df = all_runs_df.append(existing_df)
+    all_runs_df.sort_index(inplace=True)
+    all_runs_df.to_csv(result_file_path)
+
+    columns = ["reconstruction_loss", "model_name"]
+    avg_df = pd.DataFrame.from_dict(avg_recon_loss_rows, orient="index")
+    avg_df.index.name = "n_neurons"
+    avg_df.columns = columns
+    result_file_path = os.path.join(cache_dir, "results_avg.csv")
+    if os.path.exists(result_file_path):
+        existing_df = pd.DataFrame.from_csv(result_file_path, index_col = 0)
+        avg_df = avg_df.append(existing_df)
+    avg_df.sort_index(inplace=True)
+    avg_df.to_csv(result_file_path)
+    
+    

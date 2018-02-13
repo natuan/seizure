@@ -28,8 +28,9 @@ X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_d
 
 scaler = MinMaxScaler(feature_range=(-1,1))
 noise_stddev = 0.1
+n_folds = 10
 n_inputs = X_train.shape[1]
-n_neurons_range = [200]
+n_neurons_range = [1, 5, 10, 50, 75, 100, 150, 200, 250, 300]
 hidden_activation = tf.nn.tanh
 n_epochs = 5000
 batch_size = 256
@@ -37,12 +38,14 @@ checkpoint_steps = 100
 seed = 0
 
 name = config_str(prefix="denoise", n_inputs=n_inputs, hidden_activation=hidden_activation, noise_stddev=noise_stddev)
+name += "_folds{}".format(n_folds)
 cache_dir = os.path.join(root_dir, name)
 tf_log_dir = os.path.join(cache_dir, "tf_logs")
 generate_unit_autoencoders(X_train,
                            y_train,
                            scaler,
                            n_neurons_range,
+                           n_folds=n_folds,
                            hidden_activation=hidden_activation,
                            noise_stddev=noise_stddev,
                            n_epochs=n_epochs,
