@@ -488,7 +488,7 @@ def generate_unit_autoencoders(X_train,
                                batch_size = 256,
                                checkpoint_steps = 100,
                                hidden_weights_size_to_plot = 1.0,
-                               reconstructed_examples_per_class_to_plot = 10,
+                               reconstructed_examples_per_class_to_plot = 20,
                                seed = 0,                       
                                cache_dir = "../cache",
                                tf_log_dir = "../tf_logs"):
@@ -504,8 +504,8 @@ def generate_unit_autoencoders(X_train,
     all_run_rows = {}
     all_run_idx = 0
     avg_recon_loss_rows = {}
-    all_indices = np.random.permutation(len(X_train))
-    fold_sz = len(all_indices) / n_folds
+    all_indices = list(np.random.permutation(len(X_train)))
+    fold_sz = len(all_indices) // n_folds
     for n_neurons in n_neurons_range:
         avg_recon_loss = 0
         for fold_idx in range(n_folds):
@@ -539,7 +539,7 @@ def generate_unit_autoencoders(X_train,
             unit_model_path = os.path.join(unit_cache_dir, "{}.model".format(unit_name))
             fold_start_idx = int(fold_idx * fold_sz)
             fold_end_idx = min(fold_start_idx + fold_sz, len(all_indices))
-            X_train_indices = all_indices[:,fold_start_idx] + all_indices[fold_end_idx:]
+            X_train_indices = all_indices[:fold_start_idx] + all_indices[fold_end_idx:]
             X_valid_indices = all_indices[fold_start_idx:fold_end_idx]
             X_train_scaled = scaler.fit_transform(X_train[X_train_indices])
             unit.fit(X_train_scaled,
@@ -563,10 +563,11 @@ def generate_unit_autoencoders(X_train,
             unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
             plot_hidden_weights(hidden_weights, hidden_weights_size_to_plot, unit_hidden_weights_dir, seed =seed+20)
 
-            [valid_reconstruction_loss] = unit.restore_and_eval(X_train[X_valid_indices], unit_model_path, ["reconstruction_loss"])
+            X_valid_scaled = scaler.transform(X_train[X_valid_indices])
+            [valid_reconstruction_loss] = unit.restore_and_eval(X_valid_scaled, unit_model_path, ["reconstruction_loss"])
             avg_recon_loss += valid_reconstruction_loss
         avg_recon_loss /= n_folds
-        avg_recon_loss_rows[n_neurons] = avg_recon_loss
+        avg_recon_loss_rows[n_neurons] = [avg_recon_loss]
             
     columns = ["n_neurons", "fold_idx", "reconstruction_loss", "model_name"]
     all_runs_df = pd.DataFrame.from_dict(all_run_rows, orient="index")
@@ -579,7 +580,7 @@ def generate_unit_autoencoders(X_train,
     all_runs_df.sort_index(inplace=True)
     all_runs_df.to_csv(result_file_path)
 
-    columns = ["reconstruction_loss", "model_name"]
+    columns = ["reconstruction_loss"]
     avg_df = pd.DataFrame.from_dict(avg_recon_loss_rows, orient="index")
     avg_df.index.name = "n_neurons"
     avg_df.columns = columns

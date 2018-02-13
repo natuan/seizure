@@ -20,8 +20,7 @@ def plot_hidden_weights(weights, size, plot_dir_path, seed = 0):
     np.random.seed(seed)
     n_neurons = weights.shape[1]
     if isinstance(size, numbers.Integral):
-        assert(1 <= size <= n_neurons), "Invalid number of neurons to be plotted"
-        n_wanted = size
+        n_wanted = min(size, n_neurons)
     elif isinstance(size, numbers.Real):
         assert(0.0 <= size <= 1.0), "Invalid ratio"
         n_wanted = int(size * n_neurons)
