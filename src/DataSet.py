@@ -148,7 +148,7 @@ class DataSet:
             
         return segment_data_df
 
-    def split_train_test(self, test_ratio = 0.2, random_state = 0):
+    def split(self, test_ratio = 0.2, random_state = 0):
         assert(self.segment_data_df is not None), "Invalid segment_data"
         num_cols = self.segment_data_df.shape[1] - 1 # excluding the target feature
         num_rows = len(self.segment_data_df.index)
@@ -157,13 +157,23 @@ class DataSet:
         y = [self.segment_data_df.loc[segment_id, "target_class"] for segment_id in X]
         assert(len(X) == len(y))
 
-        split = StratifiedShuffleSplit(n_splits=1, test_size=test_ratio, random_state=random_state)
-        for train_indices, test_indices in split.split(X, y):            
+        split = StratifiedShuffleSplit(n_splits=1, test_size=2*test_ratio, random_state=random_state)
+        for train_indices, val_test_indices in split.split(X, y):            
             train_segment_ids = X[train_indices]
-            test_segment_ids = X[test_indices]
             train_df = self.segment_data_df.loc[train_segment_ids]
-            test_df = self.segment_data_df.loc[test_segment_ids]
+
+            # Split the validation and test indices into two equal parts
+            X_val_test = X[val_test_indices]
+            y_val_test = [self.segment_data_df.loc[segment_id, "target_class"] for segment_id in X_val_test]
+            
+            val_test_splitter = StratifiedShuffleSplit(n_splits = 1, test_size = 0.5, random_state = 2 * random_state)
+            for val_indices, test_indices in val_test_splitter.split(X_val_test, y_val_test):
+                val_segment_ids = X_val_test[val_indices]
+                test_segment_ids = X_val_test[test_indices]
+                val_df = self.segment_data_df.loc[val_segment_ids]
+                test_df = self.segment_data_df.loc[test_segment_ids]
             train_df.sort_index(inplace=True)
+            val_df.sort_index(inplace=True)
             test_df.sort_index(inplace=True)
             
         target_class_str = self._create_target_class_string()
@@ -173,6 +183,12 @@ class DataSet:
             train_df.to_csv(train_path)
             print(">> Done")
 
+        val_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_VALID.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
+        if (not os.path.exists(val_path)):
+            print("Saving {}...".format(val_path))
+            train_df.to_csv(val_path)
+            print(">> Done")
+            
         test_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TEST.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
         if (not os.path.exists(test_path)):
             print("Saving {}...".format(test_path))

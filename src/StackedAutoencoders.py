@@ -6,6 +6,7 @@ from tqdm import *
 from datetime import datetime
 import matplotlib.pyplot as plt
 import pandas as pd
+import numbers
 
 from Visual import *
 from Utils import *
@@ -19,6 +20,7 @@ class UnitAutoencoder:
                  dropout_rate = None,
                  hidden_activation = tf.nn.softmax,
                  output_activation = None,
+                 n_observable_hidden_neurons = 0,
                  regularizer = tf.contrib.layers.l2_regularizer(0.01),
                  initializer = tf.contrib.layers.variance_scaling_initializer(),
                  optimizer = tf.train.AdamOptimizer(0.001),
@@ -41,6 +43,15 @@ class UnitAutoencoder:
         self.dropout_rate = dropout_rate
         self.hidden_activation = hidden_activation
         self.regularizer = regularizer
+        self.n_observable_hidden_neurons = 0
+        if (n_observable_hidden_neurons > 0):
+            if isinstance(hidden_neurons_to_observe, numbers.Integral):
+                self.n_observable_hidden_neurons = min(n_observable_hidden_neurons, self.n_neurons)
+            elif isinstance(n_observable_hidden_neurons, numbers.Real):
+                assert(0.0 <= size <= 1.0), "Invalid ratio"
+                self.n_observable_hidden_neurons = int(n_observable_hidden_neurons * self.n_neurons)
+            else:
+                raise ValueError("Invalid type")
         self.graph = tf.Graph()
 
         with self.graph.as_default():
@@ -66,15 +77,21 @@ class UnitAutoencoder:
             loss_str = "Reconstruction_and_regularizer loss" if regularizer else "Reconstruction_loss"
             self.loss_summary = tf.summary.scalar(loss_str, self.loss)
 
-            # Ops to summarize variables
-            trainable_vars = dict([(var.name, var) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-            hidden_weights = trainable_vars["{}_hidden/kernel:0".format(self.name)]
-            assert(hidden_weights.shape == (n_inputs, n_neurons)), "Invalid hidden weight shape"
-            hidden_biases = trainable_vars["{}_hidden/bias:0".format(self.name)]
-            for neuron_idx in range(n_neurons):
-                self._variable_summaries(hidden_weights[:, neuron_idx], "weights_hidden_neuron_{}".format(neuron_idx))
-                self._variable_summaries(hidden_biases[neuron_idx], "bias_hidden_neuron_{}".format(neuron_idx))
-                self._variable_summaries(self.hidden[:, neuron_idx], "activation_hidden_neuron_{}".format(neuron_idx))
+            # Ops to observe neurons
+            if (self.n_observable_hidden_neurons > 0):
+                trainable_vars = dict([(var.name, var) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
+                hidden_weights = trainable_vars["{}_hidden/kernel:0".format(self.name)]
+                assert(hidden_weights.shape == (n_inputs, n_neurons)), "Invalid hidden weight shape"
+                hidden_biases = trainable_vars["{}_hidden/bias:0".format(self.name)]
+                if self.n_observable_hidden_neurons == self.n_neurons:
+                    # Optimization for corner case to avoid permutation
+                    neurons_indices = np.arange(self.n_neurons)
+                else:
+                    neuron_indices = list(np.random.permutation(np.arange(n_neurons))[:self.n_observable_hidden_neurons])
+                for neuron_idx in neuron_indices:
+                    self._variable_summaries(hidden_weights[:, neuron_idx], "weights_hidden_neuron_{}".format(neuron_idx))
+                    self._variable_summaries(hidden_biases[neuron_idx], "bias_hidden_neuron_{}".format(neuron_idx))
+                    self._variable_summaries(self.hidden[:, neuron_idx], "activation_hidden_neuron_{}".format(neuron_idx))
             
             self.summary = tf.summary.merge_all()
             tf_log_dir = "{}/{}_run-{}".format(tf_log_dir, self.name, timestr())
@@ -96,19 +113,22 @@ class UnitAutoencoder:
         tf.summary.scalar('min', tf.reduce_min(var))
         tf.summary.histogram('histogram', var)
         
-    def fit(self, X_train, n_epochs, model_path, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
+    def fit(self, X_train, X_valid, n_epochs, model_path, save_best_only = True, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         """
         Train the unit autoencoder against a training set
 
         Params:
-        - X_train: the training set of shape (n_samples, n_features)
+        - X_train: training set of shape (n_samples, n_features)
+        - X_valid: validation set
         - n_epochs: number of epochs to train
         - batch_size: batch size
         - checkpoint_steps: number of steps to record checkpoint and logs
         - seed: random seed for tf
         - model_path: model full path file to be saved
 
-        """       
+        """
+        # TODO: add validation set, and the model is saved only when it improves the loss on
+        # reconstruction loss
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
             if tfdebug:
@@ -117,6 +137,7 @@ class UnitAutoencoder:
                 batch_size = len(X_train)
             tf.set_random_seed(seed)
             self.init.run()
+            best_loss_on_valid_set = 10000
             for epoch in tqdm(range(n_epochs)):
                 X_train_indices = np.random.permutation(len(X_train))
                 n_batches = len(X_train) // batch_size
@@ -127,20 +148,22 @@ class UnitAutoencoder:
                     sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                    
                     step = epoch * n_batches + batch_idx
                     if step % checkpoint_steps == 0:
+                        print("** Check point at step {} **".format(step))
                         train_summary = sess.run(self.summary, feed_dict={self.X: X_batch})
                         self.train_file_writer.add_summary(train_summary, step)
+                        loss_on_valid_set = sess.run(self.loss, feed_dict={self.X: X_valid})
+                        self.train_file_writer.add_summary(loss_on_valid_set, step)
+                        model_to_save = (not save_best_only) or (loss_on_valid_set < best_loss_on_valid_set)
+                        if loss_on_valid_set < best_loss_on_valid_set:
+                            print("Loss on validation set improved from {} to {}\n".format(best_loss_on_valid_set, loss_on_valid_set))
+                            best_loss_on_valid_set = loss_on_valid_set
+                        if model_to_save:
+                            print("Saving model to {}...".format(model_path))
+                            self.saver.save(sess, model_path)
+                            print(">> Done")
                     start_idx += batch_size
-                # The remaining (less than batch_size) samples
-                indices = X_train_indices[start_idx : len(X_train)]
-                if len(indices) > 0:
-                    X_batch = X_train[indices]
-                    sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
-            print("Saving model to {}...".format(model_path))
-            self.saver.save(sess, model_path)
-            print(">> Done")
-            return sess.run(self.loss, feed_dict={self.X: X_train})
 
     def hidden_weights(self):
         assert(self.params is not None), "Invalid self.params"
