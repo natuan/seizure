@@ -45,10 +45,10 @@ class UnitAutoencoder:
         self.regularizer = regularizer
         self.n_observable_hidden_neurons = 0
         if (n_observable_hidden_neurons > 0):
-            if isinstance(hidden_neurons_to_observe, numbers.Integral):
+            if isinstance(n_observable_hidden_neurons, numbers.Integral):
                 self.n_observable_hidden_neurons = min(n_observable_hidden_neurons, self.n_neurons)
             elif isinstance(n_observable_hidden_neurons, numbers.Real):
-                assert(0.0 <= size <= 1.0), "Invalid ratio"
+                assert(0.0 <= n_observable_hidden_neurons <= 1.0), "Invalid ratio"
                 self.n_observable_hidden_neurons = int(n_observable_hidden_neurons * self.n_neurons)
             else:
                 raise ValueError("Invalid type")
@@ -85,7 +85,7 @@ class UnitAutoencoder:
                 hidden_biases = trainable_vars["{}_hidden/bias:0".format(self.name)]
                 if self.n_observable_hidden_neurons == self.n_neurons:
                     # Optimization for corner case to avoid permutation
-                    neurons_indices = np.arange(self.n_neurons)
+                    neuron_indices = np.arange(self.n_neurons)
                 else:
                     neuron_indices = list(np.random.permutation(np.arange(n_neurons))[:self.n_observable_hidden_neurons])
                 for neuron_idx in neuron_indices:
@@ -95,7 +95,8 @@ class UnitAutoencoder:
             
             self.summary = tf.summary.merge_all()
             tf_log_dir = "{}/{}_run-{}".format(tf_log_dir, self.name, timestr())
-            self.train_file_writer = tf.summary.FileWriter(tf_log_dir, self.graph)
+            self.train_file_writer = tf.summary.FileWriter(os.path.join(tf_log_dir, "train"), self.graph)
+            self.valid_file_writer = tf.summary.FileWriter(os.path.join(tf_log_dir, "valid"), self.graph)
             
         # Dictionary of trainable parameters: key = variable name, values are their values (after training or
         # restored from a model)
@@ -138,7 +139,7 @@ class UnitAutoencoder:
             tf.set_random_seed(seed)
             self.init.run()
             best_loss_on_valid_set = 10000
-            for epoch in tqdm(range(n_epochs)):
+            for epoch in range(n_epochs):
                 X_train_indices = np.random.permutation(len(X_train))
                 n_batches = len(X_train) // batch_size
                 start_idx = 0
@@ -148,11 +149,10 @@ class UnitAutoencoder:
                     sess.run(self.training_op, feed_dict={self.X: X_batch, self.training: True})                    
                     step = epoch * n_batches + batch_idx
                     if step % checkpoint_steps == 0:
-                        print("** Check point at step {} **".format(step))
                         train_summary = sess.run(self.summary, feed_dict={self.X: X_batch})
                         self.train_file_writer.add_summary(train_summary, step)
-                        loss_on_valid_set = sess.run(self.loss, feed_dict={self.X: X_valid})
-                        self.train_file_writer.add_summary(loss_on_valid_set, step)
+                        loss_on_valid_set, loss_summary_on_valid_set = sess.run([self.loss, self.loss_summary], feed_dict={self.X: X_valid})
+                        self.valid_file_writer.add_summary(loss_summary_on_valid_set, step)
                         model_to_save = (not save_best_only) or (loss_on_valid_set < best_loss_on_valid_set)
                         if loss_on_valid_set < best_loss_on_valid_set:
                             print("Loss on validation set improved from {} to {}\n".format(best_loss_on_valid_set, loss_on_valid_set))
@@ -164,6 +164,7 @@ class UnitAutoencoder:
                     start_idx += batch_size
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
+            self.valid_file_writer.close()
 
     def hidden_weights(self):
         assert(self.params is not None), "Invalid self.params"
@@ -496,7 +497,9 @@ def stacked_autoencoders(name,
     return encoder
 
 def generate_unit_autoencoders(X_train,
+                               X_valid,
                                y_train,
+                               y_valid,
                                scaler,
                                n_neurons_range,
                                n_folds = 10,
@@ -510,8 +513,8 @@ def generate_unit_autoencoders(X_train,
                                n_epochs = 5000,
                                batch_size = 256,
                                checkpoint_steps = 100,
-                               hidden_weights_size_to_plot = 1.0,
-                               reconstructed_examples_per_class_to_plot = 20,
+                               n_observable_hidden_neurons = 1.0,
+                               n_reconstructed_examples_per_class_to_plot = 20,
                                seed = 0,                       
                                cache_dir = "../cache",
                                tf_log_dir = "../tf_logs"):
@@ -551,6 +554,7 @@ def generate_unit_autoencoders(X_train,
             unit = UnitAutoencoder(unit_name,
                                    n_inputs,
                                    n_neurons,
+                                   n_observable_hidden_neurons=n_observable_hidden_neurons,
                                    noise_stddev=noise_stddev,
                                    dropout_rate=dropout_rate,
                                    hidden_activation=hidden_activation,
@@ -563,9 +567,10 @@ def generate_unit_autoencoders(X_train,
             fold_start_idx = int(fold_idx * fold_sz)
             fold_end_idx = min(fold_start_idx + fold_sz, len(all_indices))
             X_train_indices = all_indices[:fold_start_idx] + all_indices[fold_end_idx:]
-            X_valid_indices = all_indices[fold_start_idx:fold_end_idx]
             X_train_scaled = scaler.fit_transform(X_train[X_train_indices])
+            X_valid_scaled = scaler.transform(X_valid)
             unit.fit(X_train_scaled,
+                     X_valid_scaled,
                      n_epochs=n_epochs,
                      model_path=unit_model_path,
                      batch_size=batch_size,
@@ -580,14 +585,16 @@ def generate_unit_autoencoders(X_train,
             unit_plot_dir = os.path.join(unit_cache_dir, "plots")
             unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
             X_recon = scaler.inverse_transform(outputs)
-            plot_reconstructed_outputs(X_train[X_train_indices], y_train[X_train_indices], X_recon, size_per_class=reconstructed_examples_per_class_to_plot,
+            plot_reconstructed_outputs(X_train[X_train_indices], y_train[X_train_indices], X_recon, size_per_class=n_reconstructed_examples_per_class_to_plot,
                                        plot_dir_path=unit_reconstructed_dir, seed=seed+10)
             hidden_weights = unit.hidden_weights()
             unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
-            plot_hidden_weights(hidden_weights, hidden_weights_size_to_plot, unit_hidden_weights_dir, seed =seed+20)
+            plot_hidden_weights(hidden_weights, n_observable_hidden_neurons, unit_hidden_weights_dir, seed =seed+20)
 
-            X_valid_scaled = scaler.transform(X_train[X_valid_indices])
-            [valid_reconstruction_loss] = unit.restore_and_eval(X_valid_scaled, unit_model_path, ["reconstruction_loss"])
+            # Cross validation on the remaining examples
+            X_remaining_indices = all_indices[fold_start_idx:fold_end_idx]
+            X_remaining_scaled = scaler.transform(X_train[X_remaining_indices])
+            [valid_reconstruction_loss] = unit.restore_and_eval(X_remaining_scaled, unit_model_path, ["reconstruction_loss"])
             avg_recon_loss += valid_reconstruction_loss
         avg_recon_loss /= n_folds
         avg_recon_loss_rows[n_neurons] = [avg_recon_loss]

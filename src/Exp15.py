@@ -23,28 +23,31 @@ data_set = DataSet(input_dir=os.path.join(root_dir, "input"),
                    cache_dir=os.path.join(root_dir, "cache"))
 
 # Load train and test sets
-X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.2_rand0_TRAIN.csv"))
-X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.2_rand0_TEST.csv"))
+X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.1_rand0_TRAIN.csv"))
+X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.1_rand0_VALID.csv"))
+X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio0.1_rand0_TEST.csv"))
 
 scaler = MinMaxScaler(feature_range=(-1,1))
 noise_stddev = 0.1
-n_folds = 5
+n_folds = 3
 n_inputs = X_train.shape[1]
-n_neurons_range = [64] #[5, 10, 50, 75, 100, 125, 178, 200, 250, 300]
+n_neurons_range = [8] #[5, 10, 50, 75, 100, 125, 178, 200, 250, 300]
 hidden_activation = tf.nn.tanh
-n_epochs = 10000
+n_epochs = 1000
 batch_size = 256
-checkpoint_steps = 1024
+checkpoint_steps = 100
 seed = 0
-hidden_weights_size_to_plot = 1.0
-reconstructed_examples_per_class_to_plot = 20
+n_observable_hidden_neurons = 1.0
+n_reconstructed_examples_per_class_to_plot = 20
 
 name = config_str(prefix="denoise", n_inputs=n_inputs, hidden_activation=hidden_activation, noise_stddev=noise_stddev)
 name += "_folds{}".format(n_folds)
 cache_dir = os.path.join(root_dir, name)
 tf_log_dir = os.path.join(cache_dir, "tf_logs")
 generate_unit_autoencoders(X_train,
+                           X_valid,
                            y_train,
+                           y_valid,
                            scaler,
                            n_neurons_range,
                            n_folds=n_folds,
@@ -54,7 +57,7 @@ generate_unit_autoencoders(X_train,
                            batch_size=batch_size,
                            checkpoint_steps=checkpoint_steps,
                            seed=seed,
-                           hidden_weights_size_to_plot=hidden_weights_size_to_plot,
-                           reconstructed_examples_per_class_to_plot=reconstructed_examples_per_class_to_plot,
+                           n_observable_hidden_neurons=n_observable_hidden_neurons,
+                           n_reconstructed_examples_per_class_to_plot=n_reconstructed_examples_per_class_to_plot,
                            cache_dir=cache_dir,
                            tf_log_dir=tf_log_dir)
