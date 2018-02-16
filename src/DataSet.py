@@ -186,7 +186,7 @@ class DataSet:
         val_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_VALID.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
         if (not os.path.exists(val_path)):
             print("Saving {}...".format(val_path))
-            train_df.to_csv(val_path)
+            val_df.to_csv(val_path)
             print(">> Done")
             
         test_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TEST.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))

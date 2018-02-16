@@ -139,7 +139,7 @@ class UnitAutoencoder:
             tf.set_random_seed(seed)
             self.init.run()
             best_loss_on_valid_set = 10000
-            for epoch in range(n_epochs):
+            for epoch in tqdm(range(n_epochs)):
                 X_train_indices = np.random.permutation(len(X_train))
                 n_batches = len(X_train) // batch_size
                 start_idx = 0
@@ -155,12 +155,9 @@ class UnitAutoencoder:
                         self.valid_file_writer.add_summary(loss_summary_on_valid_set, step)
                         model_to_save = (not save_best_only) or (loss_on_valid_set < best_loss_on_valid_set)
                         if loss_on_valid_set < best_loss_on_valid_set:
-                            print("Loss on validation set improved from {} to {}\n".format(best_loss_on_valid_set, loss_on_valid_set))
                             best_loss_on_valid_set = loss_on_valid_set
                         if model_to_save:
-                            print("Saving model to {}...".format(model_path))
                             self.saver.save(sess, model_path)
-                            print(">> Done")
                     start_idx += batch_size
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
@@ -536,8 +533,9 @@ def generate_unit_autoencoders(X_train,
         avg_recon_loss = 0
         for fold_idx in range(n_folds):
             unit_name = config_str(prefix,
-                                   n_inputs,
-                                   n_neurons,
+                                   n_epochs=n_epochs,
+                                   n_inputs=n_inputs,
+                                   n_neurons=n_neurons,
                                    hidden_activation=hidden_activation,
                                    regularizer_value=regularizer_value,
                                    noise_stddev=noise_stddev,
@@ -566,7 +564,10 @@ def generate_unit_autoencoders(X_train,
             unit_model_path = os.path.join(unit_cache_dir, "{}.model".format(unit_name))
             fold_start_idx = int(fold_idx * fold_sz)
             fold_end_idx = min(fold_start_idx + fold_sz, len(all_indices))
-            X_train_indices = all_indices[:fold_start_idx] + all_indices[fold_end_idx:]
+            if fold_end_idx - fold_start_idx == len(all_indices):
+                X_train_indices = range(len(all_indices))
+            else:
+                X_train_indices = all_indices[:fold_start_idx] + all_indices[fold_end_idx:]
             X_train_scaled = scaler.fit_transform(X_train[X_train_indices])
             X_valid_scaled = scaler.transform(X_valid)
             unit.fit(X_train_scaled,

@@ -33,6 +33,12 @@ def unit_config_str(prefix,
     return s
 
 def config_str(prefix = None,
+               ratio = None,
+               min_scale = None,
+               max_scale = None,
+               adam_lr = None,
+               n_epochs = None,
+               n_folds = None,
                n_inputs = None,
                n_neurons = None,
                hidden_activation = None,
@@ -40,6 +46,14 @@ def config_str(prefix = None,
                noise_stddev = None,
                dropout_rate = None):
     s = "{}".format(prefix) if prefix is not None else ""
+    if ratio is not None:
+        s += "_ratio{}".format(ratio)
+    if min_scale is not None and max_scale is not None:
+        s += "_scale{}to{}".format(min_scale, max_scale)
+    if adam_lr is not None:
+        s += "_adam{}".format(adam_lr)
+    if n_epochs is not None:
+        s += "_epoch{}".format(n_epochs)
     if n_inputs is not None:
         s += "_inputs{}".format(n_inputs)
     if n_neurons is not None:
@@ -61,6 +75,8 @@ def config_str(prefix = None,
         s += "_noise{}".format(noise_stddev)
     if dropout_rate is not None:
         s += "_drop{}".format(dropout_rate)
+    if n_folds is not None:
+        s += "_folds{}".format(n_folds)
     return s
 
 # Create a time string
