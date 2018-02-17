@@ -138,7 +138,8 @@ class UnitAutoencoder:
                 batch_size = len(X_train)
             tf.set_random_seed(seed)
             self.init.run()
-            best_loss_on_valid_set = 10000
+            best_loss_on_valid_set = 100000
+            model_step = -1
             for epoch in tqdm(range(n_epochs)):
                 X_train_indices = np.random.permutation(len(X_train))
                 n_batches = len(X_train) // batch_size
@@ -158,11 +159,13 @@ class UnitAutoencoder:
                             best_loss_on_valid_set = loss_on_valid_set
                         if model_to_save:
                             self.saver.save(sess, model_path)
+                            model_step = step
                     start_idx += batch_size
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
             self.valid_file_writer.close()
-
+            assert(model_step >= 0), "Invalid model step"
+            return model_step
     def hidden_weights(self):
         assert(self.params is not None), "Invalid self.params"
         return self.params["{}_hidden/kernel:0".format(self.name)]
@@ -570,14 +573,14 @@ def generate_unit_autoencoders(X_train,
                 X_train_indices = all_indices[:fold_start_idx] + all_indices[fold_end_idx:]
             X_train_scaled = scaler.fit_transform(X_train[X_train_indices])
             X_valid_scaled = scaler.transform(X_valid)
-            unit.fit(X_train_scaled,
-                     X_valid_scaled,
-                     n_epochs=n_epochs,
-                     model_path=unit_model_path,
-                     batch_size=batch_size,
-                     checkpoint_steps=checkpoint_steps,
-                     seed=seed)
-            
+            model_step = unit.fit(X_train_scaled,
+                                  X_valid_scaled,
+                                  n_epochs=n_epochs,
+                                  model_path=unit_model_path,
+                                  batch_size=batch_size,
+                                  checkpoint_steps=checkpoint_steps,
+                                  seed=seed)
+            print("\n>> Model {} saved at step {}\n".format(unit_model_path, model_step))
             [reconstruction_loss, outputs] = unit.restore_and_eval(X_train_scaled, unit_model_path, ["reconstruction_loss", "outputs"])
             all_run_row = [n_neurons, fold_idx, reconstruction_loss, unit_name]
             all_run_rows[all_run_idx] = all_run_row
