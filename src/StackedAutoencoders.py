@@ -12,6 +12,10 @@ from Visual import *
 from Utils import *
 
 class UnitAutoencoder:
+    """
+    A single autoencoder which can be either an ordinary or a denoising unit. Denoising autoencoder can be 
+    specified with Gaussian noises or dropout on the inputs.
+    """
     def __init__(self,
                  name,
                  n_inputs,
@@ -26,14 +30,15 @@ class UnitAutoencoder:
                  optimizer = tf.train.AdamOptimizer(0.001),
                  tf_log_dir = "../tf_logs"):
         """
-        Create an autoencoder that has one hidden layer of neurons
+        Ctor
         
-        Params:
+        Arguments:
         - n_inputs: number of inputs; also the number of neurons in the output layer
         - n_neurons: number of neurons in the hidden layer
         - noise_stddev: standard deviation of the Gaussian noise; not used if None
         - dropout_rate: if specified a Dropout layer will be added after the input layer; not used if None
         - regularizer: kernel regularizers for hidden and output layers
+
         Return: None
         """
         self.name = name
@@ -128,8 +133,6 @@ class UnitAutoencoder:
         - model_path: model full path file to be saved
 
         """
-        # TODO: add validation set, and the model is saved only when it improves the loss on
-        # reconstruction loss
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
             if tfdebug:
@@ -236,26 +239,6 @@ class UnitAutoencoder:
                     vars_to_eval += [self.outputs]
             return sess.run(vars_to_eval, feed_dict={self.X: X})
 
-    def plot_hidden_neurons(self, plot_dir_path):
-        assert(self.params), "Error: self.params empty"
-        assert(plot_dir_path), "Invalid dir path"
-        if not os.path.exists(plot_dir_path):
-            os.makedirs(plot_dir_path)
-        kernel_name = "{}_hidden/kernel:0".format(self.name)
-        weights_list = self.params[kernel_name]
-        n_rows = 10
-        n_cols = len(weights_list) // n_rows
-        fig = plt.figure()
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(50, 48))
-        idx = 0
-        for r in range(n_rows):
-            for c in range(n_cols):
-                ax = fig.add_subplot(n_rows, n_cols, idx + 1)
-                ax.plot(weights_list[idx])
-                idx += 1
-        plot_file = os.path.join(plot_dir_path, "neurons.png")
-        plt.savefig(plot_file)
-        
 
 class StackedAutoencoders:
     def __init__(self,
@@ -377,9 +360,7 @@ class StackedAutoencoders:
     def save(self, model_path):
         with tf.Session(graph=self.graph) as sess:
             self.init.run()
-            print("Saving model to {}...".format(model_path))
             self.saver.save(sess, model_path)
-            print(">> Done")       
             
     def fit(self, X_train, model_path, n_epochs, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         assert(self.training_op is not None), "Invalid self.training_op"
@@ -427,11 +408,15 @@ class StackedAutoencoders:
         """
         Restore model's params and evaluate variables
 
-        Params:
+        Arguments:
         - model_path: full path to the model file
+        - X: the input to be fed into the network
         - varlist: list of variables to evaluate. Valid values: "loss", "reconstruction_loss", "hidden_outputs", "outputs"
 
         Return: a list of evaluated variables
+
+        TODO: extend X to also accept a list of inputs; useful when evaluate with training and test sets so that 
+        the network needs to be restored once
         """
         assert(self.graph), "Invalid graph"
         with tf.Session(graph=self.graph) as sess:
@@ -460,42 +445,116 @@ class StackedAutoencoders:
                 elif var == "outputs":
                     vars_to_eval += [self.outputs]
             return sess.run(vars_to_eval, feed_dict={self.X: X})
+
+
+class StackBuilder:
+    def __init__(self,
+                 name,
+                 n_inputs,
+                 noise_stddev = 0.3,
+                 n_hidden_layers = 3,
+                 n_neurons_per_layer = 200,
+                 unit_hidden_activations = tf.nn.softmax,
+                 unit_output_activations = None,
+                 output_activation = tf.nn.softmax,
+                 output_kernel_regularizer = None,
+                 output_kernel_initializer = tf.contrib.layers.variance_scaling_initializer(),
+                 output_bias_initializer = tf.zeros_initializer(),
+                 adam_lr = 5*1e-6,
+                 cache_dir = "../cache",
+                 tf_logs = "../tf_logs"):
+        self.name = name
+        self.n_inputs
+        self.noise_stddev = noise_stddev
+        self.n_hidden_layers = n_hidden_layers
+        self.n_neurons_per_layer = n_neurons_per_layer
+        self.unit_hidden_activations = unit_hidden_activations
+        self.unit_output_activations = unit_output_activations
+        self.include_output_layer = include_output_layer
+        self.output_activation = output_activation
+        self.output_kernel_regularizer = output_kernel_regularizer
+        self.output_kernel_initializer = output_kernel_initializer
+        self.output_bias_initializer = output_bias_initializer
+        self.adam_lr = adam_lr 
+        self.cache_dir = cache_dir
+        self.tf_logs = tf_logs
+        self.stack_cache_dir = os.path.join(self.cache_dir, "stack")
+        self.stack_tf_log_dir = os.path.join(self.tf_log_dir, "stack")
+        self.model_path = os.path.join(self.stack_cache_dir, self.name) + ".model"
+        self.stack = None
         
-def stacked_autoencoders(name,
-                         units,
-                         hidden_layer_names = None,
-                         include_output_layer = True,
-                         output_layer_name = None,
-                         output_activation = None,
-                         output_kernel_regularizer = None,
-                         output_kernel_initializer = tf.contrib.layers.variance_scaling_initializer(),
-                         output_bias_initializer = tf.zeros_initializer(),
-                         optimizer = tf.train.AdamOptimizer(0.001),
-                         cache_dir = "../cache",
-                         tf_log_dir = "../tf_log",):
-    """
-    Building a stacked autoencoder
+    def build_pretrained_stack(self,
+                               X_train,
+                               X_valid,
+                               scaler = MinMaxScaler(feature_range=(0, 1)),
+                               n_observable_hidden_neurons_per_layer = 0,
+                               n_epochs = 10000,
+                               batch_size = 64,
+                               checkpoint_steps = 1000,
+                               seed = 42):
+        assert(X_train.shape[1] == X_valid.shape[1]), "Invalid input shapes"
+        units = []
+        n_inputs = X_train.shape[1]
+        X_input_scaled = scaler.fit_transform(X_train)
+        X_valid_scaled = scaler.transform(X_valid)
+        for hidden_layer in range(n_hidden_layers):
+            print("** Pretraining hidden layer {}/{}\n**".format(hidden_layer+1, n_hidden_layers))
+            unit_name = "Unit_{}_of_{}".format(hidden_layer+1, n_hidden_layers)
+            unit_cache_dir = os.path.join(self.cache_dir, unit_name)
+            if not os.path.exists(unit_cache_dir):
+                os.makedirs(unit_cache_dir)
+            unit_tf_log_dir = os.path.join(self.tf_log_dir, unit_name)
+            if not os.path.exists(unit_tf_log_dir):
+                os.makedirs(unit_tf_log_dir)
+            unit = UnitAutoencoder(unit_name,
+                                   n_inputs,
+                                   n_neurons_per_layer,
+                                   noise_stddev = self.noise_stddev,
+                                   hidden_activation = self.unit_hidden_activations,
+                                   output_activation = self.unit_output_activations,
+                                   n_observable_hidden_neurons = n_observable_hidden_neurons_per_layer,
+                                   regularizer = None,
+                                   optimizer = tf.train.AdamOptimizer(self.adam_lr),
+                                   tf_log_dir = unit_tf_log_dir)
+            unit_model_path = os.path.join(unit_cache_dir, "{}.model".format(unit_name))
+            model_step = unit.fit(X_input_scaled,
+                                  X_valid_scaled,
+                                  n_epochs=n_epochs,
+                                  model_path=unit_model_path,
+                                  batch_size=batch_size,
+                                  checkpoint_steps=checkpoint_steps,
+                                  seed=seed)
+            units += [unit]
+            X_input_scaled = unit.restore_and_eval(X_input_scaled, unit_model_path, ["hidden_ouputs"])
+            X_valid_scaled = unit.restore_and_eval(X_valid_scaled, unit_model_path, ["hidden_ouputs"])
+        print("** Stacking up pretrained units **\n")
+        self.stack = StackedAutoencoders(name=self.name, cache_dir=self.stack_cache_dir, tf_log_dir=self.stack_tf_log_dir)
+        stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(units))]
+        for idx, unit in enumerate(units):
+            self.stack.stack_autoencoder(unit, stack_hidden_layer_names[idx])
+        self.stack.stack_output_layer(layer_name="{}_outputs".format(self.name),
+                                      activation=self.output_activation,
+                                      kernel_regularizer=self.output_kernel_regularizer,
+                                      kernel_initializer=self.output_kernel_initializer,
+                                      bias_initializer=self.output_bias_initializer)
+        self.stack.finalize(optimizer=tf.train.AdamOptimizer(self.adam_lr))
+        self.model_path = os.path.join(stack_cache_dir, self.name)
+        self.stack.save(model_path)
 
-    Params:
-    - name: name of the stacked autoencoder
-    - units: list of unit autoencoders
-    """
-    encoder = StackedAutoencoders(name=name, cache_dir=cache_dir, tf_log_dir=tf_log_dir)
-    if not hidden_layer_names:
-        hidden_layer_names = ["{}_hidden_{}".format(name, str(idx)) for idx in range(len(units))]
-    assert(len(hidden_layer_names) == len(units)), "Mismatch hidden layer names and units"
-    for idx, unit in enumerate(units):
-        encoder.stack_autoencoder(unit, hidden_layer_names[idx])
-    if include_output_layer:
-        output_layer_name = "{}_outputs".format(name) if output_layer_name is None else output_layer_name
-        encoder.stack_output_layer(layer_name=output_layer_name,
-                                   activation=output_activation,
-                                   kernel_regularizer=output_kernel_regularizer,
-                                   kernel_initializer=output_kernel_initializer,
-                                   bias_initializer=output_bias_initializer)
-    encoder.finalize(optimizer=optimizer)
-    return encoder
+    def encode(self, X, file_path = None):
+        """
+        Compute the codings of an input by the network
 
+        Arguments:
+        - X: the input to be fed into the network with shape (n_examples, n_features)
+        - file_path: path to a csv file storing the resulting codings; ignored if None.
+
+        Return: the codings of X with shape (n_examples, n_new_features)
+        """
+        X_codings = self.stack.restore_and_eval(model_path=self.model_path, X=X, varlist=["hidden_outputs"])
+        assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
+
+    
 def generate_unit_autoencoders(X_train,
                                X_valid,
                                y_train,
