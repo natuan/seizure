@@ -11,7 +11,6 @@ from sklearn.neighbors import KNeighborsClassifier
 from DataSet import DataSet
 from FeatureExtractor import FeatureExtractor
 from StackedAutoencoders import *
-from StackBuilder import *
 from Classifier import Classifier
 from Utils import *
 
@@ -28,18 +27,19 @@ X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache
 X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_VALID.csv".format(ratio)))
 X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_TEST.csv".format(ratio)))
 
-min_scale, max_scale = -1, 1
+min_scale, max_scale = 0, 1
 scaler = MinMaxScaler(feature_range=(min_scale, max_scale))
 noise_stddev = 0.3
 n_folds = 1
 n_inputs = X_train.shape[1]
-n_neurons_range = [200, 300, 400]
-hidden_activation = tf.nn.relu
-n_epochs = 20000
-batch_size = 32
-checkpoint_steps = 1000
+n_neurons_range = [300]
+hidden_activation = tf.nn.softmax
+n_epochs = 100000
+batch_size = 64
+checkpoint_steps = 5000
 seed = 0
-n_observable_hidden_neurons = 10
+n_observable_hidden_neurons = 0
+n_hidden_neurons_to_plot = 50
 n_reconstructed_examples_per_class_to_plot = 50
 
 adam_lr = 5 * 1e-6
@@ -67,6 +67,7 @@ generate_unit_autoencoders(X_train,
                            seed=seed,
                            optimizer=optimizer,
                            n_observable_hidden_neurons=n_observable_hidden_neurons,
+                           n_hidden_neurons_to_plot=n_hidden_neurons_to_plot,
                            n_reconstructed_examples_per_class_to_plot=n_reconstructed_examples_per_class_to_plot,
                            cache_dir=cache_dir,
                            tf_log_dir=tf_log_dir)

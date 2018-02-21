@@ -514,6 +514,7 @@ def generate_unit_autoencoders(X_train,
                                batch_size = 256,
                                checkpoint_steps = 100,
                                n_observable_hidden_neurons = 1.0,
+                               n_hidden_neurons_to_plot = 1.0,
                                n_reconstructed_examples_per_class_to_plot = 20,
                                seed = 0,                       
                                cache_dir = "../cache",
@@ -593,7 +594,7 @@ def generate_unit_autoencoders(X_train,
                                        plot_dir_path=unit_reconstructed_dir, seed=seed+10)
             hidden_weights = unit.hidden_weights()
             unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
-            plot_hidden_weights(hidden_weights, n_observable_hidden_neurons, unit_hidden_weights_dir, seed =seed+20)
+            plot_hidden_weights(hidden_weights, n_hidden_neurons_to_plot, unit_hidden_weights_dir, seed =seed+20)
 
             # Cross validation on the remaining examples
             X_remaining_indices = all_indices[fold_start_idx:fold_end_idx]
