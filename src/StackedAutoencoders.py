@@ -7,6 +7,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import pandas as pd
 import numbers
+from sklearn.preprocessing import MinMaxScaler
 
 from Visual import *
 from Utils import *
@@ -168,19 +169,18 @@ class UnitAutoencoder:
             self.train_file_writer.close()
             self.valid_file_writer.close()
             assert(model_step >= 0), "Invalid model step"
-            return model_step
+            all_steps = n_epochs * n_batches
+            return model_step, all_steps
     def hidden_weights(self):
         assert(self.params is not None), "Invalid self.params"
         return self.params["{}_hidden/kernel:0".format(self.name)]
         
     def restore(self, model_path):
-        print("Restoring model from {}...".format(model_path))
         if self.params is not None:
             print(">> Warning: self.params not empty and will be replaced")
         with tf.Session(graph=self.graph) as sess:
             self.saver.restore(sess, model_path)
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-        print(">> Done")
 
     def eval(self, X, varlist):
         assert(self.params), "Invalid self.params"
@@ -216,10 +216,8 @@ class UnitAutoencoder:
         """
         assert(self.graph), "Invalid graph"
         with tf.Session(graph=self.graph) as sess:
-            print("Restoring model from {}...".format(model_path))
             self.saver.restore(sess, model_path)
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-            print(">> Done")
             if tfdebug:
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             varmap = {"loss": self.loss,
@@ -396,13 +394,11 @@ class StackedAutoencoders:
             return sess.run(self.loss, feed_dict={self.X: X_train})
 
     def restore(self, model_path):
-        print("Restoring model from {}...".format(model_path))
         if self.params is not None:
             print(">> Warning: self.params not empty and will be replaced")
         with tf.Session(graph=self.graph) as sess:
             self.saver.restore(sess, model_path)
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-        print(">> Done")
         
     def restore_and_eval(self, model_path, X = None, varlist = [], tfdebug = False):
         """
@@ -420,10 +416,8 @@ class StackedAutoencoders:
         """
         assert(self.graph), "Invalid graph"
         with tf.Session(graph=self.graph) as sess:
-            print("Restoring model from {}...".format(model_path))
             self.saver.restore(sess, model_path)
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-            print(">> Done")
             if tfdebug:
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             if not varlist:
@@ -441,16 +435,18 @@ class StackedAutoencoders:
                 elif var == "reconstruction_loss":
                     vars_to_eval += [self.reconstruction_loss]
                 elif var == "hidden_outputs":
-                    vars_to_eval += [self.hidden]
+                    vars_to_eval += [self.hidden[-1]]
                 elif var == "outputs":
                     vars_to_eval += [self.outputs]
             return sess.run(vars_to_eval, feed_dict={self.X: X})
 
 
 class StackBuilder:
+    """
+    Utility class to build a stacked autoencoder with predefined specification
+    """
     def __init__(self,
                  name,
-                 n_inputs,
                  noise_stddev = 0.3,
                  n_hidden_layers = 3,
                  n_neurons_per_layer = 200,
@@ -462,53 +458,60 @@ class StackBuilder:
                  output_bias_initializer = tf.zeros_initializer(),
                  adam_lr = 5*1e-6,
                  cache_dir = "../cache",
-                 tf_logs = "../tf_logs"):
+                 tf_log_dir = "../tf_logs"):
         self.name = name
-        self.n_inputs
         self.noise_stddev = noise_stddev
         self.n_hidden_layers = n_hidden_layers
+        self.unit_model_paths = [None] * n_hidden_layers
         self.n_neurons_per_layer = n_neurons_per_layer
         self.unit_hidden_activations = unit_hidden_activations
         self.unit_output_activations = unit_output_activations
-        self.include_output_layer = include_output_layer
         self.output_activation = output_activation
         self.output_kernel_regularizer = output_kernel_regularizer
         self.output_kernel_initializer = output_kernel_initializer
         self.output_bias_initializer = output_bias_initializer
         self.adam_lr = adam_lr 
         self.cache_dir = cache_dir
-        self.tf_logs = tf_logs
+        self.tf_log_dir = tf_log_dir
         self.stack_cache_dir = os.path.join(self.cache_dir, "stack")
         self.stack_tf_log_dir = os.path.join(self.tf_log_dir, "stack")
-        self.model_path = os.path.join(self.stack_cache_dir, self.name) + ".model"
+        self.stack_model_path = os.path.join(self.stack_cache_dir, self.name) + ".model"
         self.stack = None
+
+    def _save_X(self, X, file_path):
+        columns = ["f_{}".format(idx) for idx in range(X.shape[1])]
+        df = pd.DataFrame(data=X, columns=columns)
+        df.to_csv(file_path)
         
     def build_pretrained_stack(self,
                                X_train,
                                X_valid,
-                               scaler = MinMaxScaler(feature_range=(0, 1)),
+                               y_train,
+                               unit_model_paths = [],
                                n_observable_hidden_neurons_per_layer = 0,
+                               n_hidden_neurons_to_plot = 20,
+                               n_reconstructed_examples_per_class_to_plot = 20,
                                n_epochs = 10000,
                                batch_size = 64,
                                checkpoint_steps = 1000,
                                seed = 42):
         assert(X_train.shape[1] == X_valid.shape[1]), "Invalid input shapes"
         units = []
-        n_inputs = X_train.shape[1]
-        X_input_scaled = scaler.fit_transform(X_train)
-        X_valid_scaled = scaler.transform(X_valid)
-        for hidden_layer in range(n_hidden_layers):
-            print("** Pretraining hidden layer {}/{}\n**".format(hidden_layer+1, n_hidden_layers))
-            unit_name = "Unit_{}_of_{}".format(hidden_layer+1, n_hidden_layers)
+        X_train_current = X_train
+        X_valid_current = X_valid
+        rows = {}
+        for hidden_layer in range(self.n_hidden_layers):
+            unit_name = "Unit_{}".format(hidden_layer)
             unit_cache_dir = os.path.join(self.cache_dir, unit_name)
             if not os.path.exists(unit_cache_dir):
                 os.makedirs(unit_cache_dir)
             unit_tf_log_dir = os.path.join(self.tf_log_dir, unit_name)
             if not os.path.exists(unit_tf_log_dir):
                 os.makedirs(unit_tf_log_dir)
+            n_inputs = X_train_current.shape[1]
             unit = UnitAutoencoder(unit_name,
                                    n_inputs,
-                                   n_neurons_per_layer,
+                                   self.n_neurons_per_layer,
                                    noise_stddev = self.noise_stddev,
                                    hidden_activation = self.unit_hidden_activations,
                                    output_activation = self.unit_output_activations,
@@ -516,18 +519,44 @@ class StackBuilder:
                                    regularizer = None,
                                    optimizer = tf.train.AdamOptimizer(self.adam_lr),
                                    tf_log_dir = unit_tf_log_dir)
-            unit_model_path = os.path.join(unit_cache_dir, "{}.model".format(unit_name))
-            model_step = unit.fit(X_input_scaled,
-                                  X_valid_scaled,
-                                  n_epochs=n_epochs,
-                                  model_path=unit_model_path,
-                                  batch_size=batch_size,
-                                  checkpoint_steps=checkpoint_steps,
-                                  seed=seed)
+            unit_model_path = unit_model_paths[hidden_layer] if hidden_layer < len(unit_model_paths) else os.path.join(unit_cache_dir, "{}.model".format(unit_name))
+            if not os.path.exists("{}.meta".format(unit_model_path)):
+                print("Training {} for hidden layer {}...\n".format(unit_name, hidden_layer))
+                model_step, all_steps = unit.fit(X_train_current,
+                                                 X_valid_current,
+                                                 n_epochs=n_epochs,
+                                                 model_path=unit_model_path,
+                                                 batch_size=batch_size,
+                                                 checkpoint_steps=checkpoint_steps,
+                                                 seed=seed)
+                print(">> Done\n")
+            else:
+                print("Reloading model {} of {} for hidden layer {}...\n".format(unit_model_path, unit_name, hidden_layer))
+                unit.restore(unit_model_path)
+                model_step, all_steps = 0, 0
+                print(">> Done\n")
+            print("Plotting reconstructed outputs of unit at hidden layer {}...\n".format(hidden_layer))
+            unit_plot_dir = os.path.join(unit_cache_dir, "plots")
+            [X_recon] = unit.restore_and_eval(X_train_current, unit_model_path, ["outputs"])
+            assert(X_recon.shape == X_train_current.shape), "Invalid output shape"
+            unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
+            plot_reconstructed_outputs(X_train_current, y_train, X_recon, size_per_class=n_reconstructed_examples_per_class_to_plot,
+                                       plot_dir_path=unit_reconstructed_dir, seed=seed+10)
+            print(">> Done\n")
+            print("Plotting hidden weights of unit at hidden layer {}...\n".format(hidden_layer))
+            hidden_weights = unit.hidden_weights()
+            unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
+            plot_hidden_weights(hidden_weights, n_hidden_neurons_to_plot, unit_hidden_weights_dir, seed =seed+20)
+            print(">> Done\n")
+            self.unit_model_paths[hidden_layer] = unit_model_path
             units += [unit]
-            X_input_scaled = unit.restore_and_eval(X_input_scaled, unit_model_path, ["hidden_ouputs"])
-            X_valid_scaled = unit.restore_and_eval(X_valid_scaled, unit_model_path, ["hidden_ouputs"])
-        print("** Stacking up pretrained units **\n")
+            self._save_X(X_train_current, os.path.join(unit_cache_dir, "X_train_layer_{}.csv".format(hidden_layer)))
+            self._save_X(X_valid_current, os.path.join(unit_cache_dir, "X_valid_layer_{}.csv".format(hidden_layer)))
+            [train_reconstruction_loss, X_train_current] = unit.restore_and_eval(X_train_current, unit_model_path, ["reconstruction_loss", "hidden_outputs"])
+            [valid_reconstruction_loss, X_valid_current] = unit.restore_and_eval(X_valid_current, unit_model_path, ["reconstruction_loss", "hidden_outputs"])
+            rows[hidden_layer] = [train_reconstruction_loss, valid_reconstruction_loss, model_step, all_steps, unit_model_path]
+            
+        print("Stacking up pretrained units...\n")
         self.stack = StackedAutoencoders(name=self.name, cache_dir=self.stack_cache_dir, tf_log_dir=self.stack_tf_log_dir)
         stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(units))]
         for idx, unit in enumerate(units):
@@ -538,8 +567,20 @@ class StackBuilder:
                                       kernel_initializer=self.output_kernel_initializer,
                                       bias_initializer=self.output_bias_initializer)
         self.stack.finalize(optimizer=tf.train.AdamOptimizer(self.adam_lr))
-        self.model_path = os.path.join(stack_cache_dir, self.name)
-        self.stack.save(model_path)
+        print(">> Done\n")
+        print("Saving stack model to {}...\n".format(self.stack_model_path))
+        self.stack.save(self.stack_model_path)
+        print(">> Done\n")
+
+        result_file_path = os.path.join(self.stack_cache_dir, "hidden_layer_units.csv")
+        print("Saving results of building hidden layer units to {}...\n".format(result_file_path))
+        columns = ["train_reconstruction_loss", "valid_reconstruction_loss", "step_of_best_model", "all_steps", "unit_model_path"]
+        df = pd.DataFrame.from_dict(rows, orient="index")
+        df.index.name = "hidden_layer"
+        df.columns = columns
+        df.sort_index(inplace=True)
+        df.to_csv(result_file_path)
+        
 
     def encode(self, X, file_path = None):
         """
@@ -547,13 +588,17 @@ class StackBuilder:
 
         Arguments:
         - X: the input to be fed into the network with shape (n_examples, n_features)
-        - file_path: path to a csv file storing the resulting codings; ignored if None.
+        - file_path (optional): path to a csv file storing the resulting codings
 
         Return: the codings of X with shape (n_examples, n_new_features)
         """
-        X_codings = self.stack.restore_and_eval(model_path=self.model_path, X=X, varlist=["hidden_outputs"])
+        [X_codings] = self.stack.restore_and_eval(model_path=self.stack_model_path, X=X, varlist=["hidden_outputs"])
         assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
-
+        if file_path is not None:
+            columns = ["f_{}".format(idx) for idx in range(X_codings.shape[1])]
+            df = pd.DataFrame(data=X_codings, columns=columns)
+            df.to_csv(file_path)
+        return X_codings
     
 def generate_unit_autoencoders(X_train,
                                X_valid,
@@ -684,5 +729,4 @@ def generate_unit_autoencoders(X_train,
         avg_df = avg_df.append(existing_df)
     avg_df.sort_index(inplace=True)
     avg_df.to_csv(result_file_path)
-    
     

@@ -41,6 +41,8 @@ def config_str(prefix = None,
                n_folds = None,
                n_inputs = None,
                n_neurons = None,
+               n_hidden_layers = None,
+               n_neurons_per_layer = None,
                hidden_activation = None,
                regularizer_value = None,
                noise_stddev = None,
@@ -58,6 +60,10 @@ def config_str(prefix = None,
         s += "_inputs{}".format(n_inputs)
     if n_neurons is not None:
         s += "_neurons{}".format(n_neurons)
+    if n_neurons_per_layer is not None:
+        s += "_neuronslayer{}".format(n_neurons_per_layer)
+    if n_hidden_layers is not None:
+        s += "_hiddenlayers{}".format(n_hidden_layers)
     if hidden_activation is not None:
         if hidden_activation == tf.nn.softmax:
             s += "_softmax"
@@ -83,4 +89,4 @@ def config_str(prefix = None,
 def timestr():
     today = datetime.today()
     month_dict = {1:"jan", 2:"feb", 3:"mar", 4:"apr", 5:"may", 6:"jun", 7:"jul", 8:"aug", 9:"sep", 10:"oct", 11:"nov", 12:"dec"}
-    return "{}{}_{}:{}".format(month_dict[today.month], today.day, today.hour, today.minute)
+    return "{}{}_{}h{}".format(month_dict[today.month], today.day, today.hour, today.minute)
