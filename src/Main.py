@@ -3,11 +3,14 @@ import os
 import sys
 import pandas as pd
 import tensorflow as tf
+from sklearn.model_selection import GridSearchCV, ShuffleSplit
+from sklearn.metrics import make_scorer, accuracy_score, fbeta_score
 from sklearn.svm import SVC
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from time import time
 
-from DataSet import DataSet
+from DataSet import *
 from FeatureExtractor import FeatureExtractor
 from StackedAutoencoders import *
 from Classifier import Classifier
@@ -26,14 +29,17 @@ X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache
 X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_VALID.csv".format(ratio)))
 X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_TEST.csv".format(ratio)))
 
+# Scaling the train, valid and test sets
+signal_range = (np.amin(X_train), np.amax(X_train))
+scaling_range = (0, 1)
+X_train_scaled = min_max_scale(X_train, signal_range, scaling_range)
+X_valid_scaled = min_max_scale(X_valid, signal_range, scaling_range)
+X_test_scaled = min_max_scale(X_test, signal_range, scaling_range)
+
 # Initialize coded train, validation and test sets
 X_train_codings = None
 X_valid_codings = None
 X_test_codings = None
-
-# The scaler to apply to the training set
-min_scale, max_scale = 0, 1
-scaler = MinMaxScaler(feature_range=(min_scale, max_scale))
 
 # The optimizer
 adam_lr = 5 * 1e-6
@@ -105,15 +111,13 @@ def build_and_train_stack(n_hidden_layers, n_neurons_per_layer, unit_model_paths
     # Training configuration
     n_epochs = 100000
     batch_size = 64
-    checkpoint_steps = 5000
+    n_batches = len(X_train_scaled) // batch_size
+    checkpoint_steps = n_batches 
     seed = 0
     n_observable_hidden_neurons_per_layer = 10
     n_hidden_neurons_to_plot = 1.0
     n_reconstructed_examples_per_class_to_plot = 50
 
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_valid_scaled = scaler.transform(X_valid)
-    X_test_scaled = scaler.transform(X_test)
     stack.build_pretrained_stack(X_train_scaled,
                                  X_valid_scaled,
                                  y_train,
@@ -136,32 +140,57 @@ def build_and_train_stack(n_hidden_layers, n_neurons_per_layer, unit_model_paths
     assert(X_test_codings.shape[0] == X_test.shape[0]), "Invalid rows"
     return stack, X_train_codings, X_valid_codings, X_test_codings
 
-"""
-def classify(X_train_codings, X_valid_codings, X_test_codings, y_train, y_valid, y_test, n_folds = 10):
-    svc = SVC(random_state = 42)
-    knn = KNeighborsClassifier()
-    gradient_boost = GradientBoostingClassifier(random_state = 42)
+def performance_metric(y_true, y_predict):
+    score = accuracy_score(y_true, y_predict)
+    return score
 
-    for clf in [svc, knn, gradient_boost]:
-        print("=== {} ===".format(clf.__class__.__name__))
-        classifier = Classifier(classifier = clf)
-        train_results = classifier.fit(X_train_codings, X_valid_codings, y_train, y_valid, n_folds = n_folds)
+def predict(classifier, X_test, y_test):
+    print("Predicting...")
+    y_predict = classifier.predict(X_test)
+    accuracy = accuracy_score(y_test, y_predict)
+    fscore = fbeta_score(y_test, y_predict, beta = .5, average = 'weighted')
+    print(">> Accuracy : {}\n".format(accuracy))
+    print(">> F-score  : {}\n".format(fscore))
+    print(">> Done\n")
 
-        print("Training results: ")
-        print(train_results)
+def svm_fit_and_classify(X_train, X_test, y_train, y_test):
+    print("Searching for best params of SVM...\n")
+    cv_sets = ShuffleSplit(n_splits = 10, test_size = 0.20, random_state = 0)
+    classifier = SVC(random_state = 42)
+    params = {'C': [0.5]}
+    scoring_fnc = make_scorer(performance_metric)
+    grid = GridSearchCV(classifier, params, scoring=scoring_fnc, cv=cv_sets)
+    grid = grid.fit(X_train, y_train)
+    best = grid.best_estimator_
+    print(">> Best C value: {}\n".format(best.get_params()['C']))
+    print(">> Done\n")
+    predict(best, X_test, y_test)
 
-        X_test_coded = feature_extractor.codings(X_test)
-        test_results = classifier.predict(X_test_coded, y_test)
-
-        print("Testing results:")
-        print(test_results)
-"""
-
+def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
+    print("Searching for best params of GradientBoostingClassifier...\n")
+    cv_sets = ShuffleSplit(n_splits = 10, test_size = 0.20, random_state = 0)
+    classifier = GradientBoostingClassifier()
+    params = {'max_depth': [3]}
+    scoring_fnc = make_scorer(performance_metric)
+    grid = GridSearchCV(classifier, params, scoring=scoring_fnc, cv=cv_sets)
+    grid = grid.fit(X_train, y_train)
+    best = grid.best_estimator_
+    print(">> Best max_depth value: {}\n".format(best.get_params()['max_depth']))
+    print(">> Done\n")
+    predict(best, X_test, y_test)
+    
 if __name__ == "__main__":
     # build_and_train_units()
+    """
+    plot_reconstructed_outputs(X_train, y_train, X_train_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/train", seed = 0)
+    plot_reconstructed_outputs(X_valid, y_valid, X_valid_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/valid", seed = 0)
+    plot_reconstructed_outputs(X_test, y_test, X_test_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/test", seed = 0)
+    """
     print("========== BUILDING STACK 1 ============\n")
     stack_1, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(1, 200)
     print("========== BUILDING STACK 2 ============\n")
     stack_2, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(2, 200, unit_model_paths = stack_1.unit_model_paths)
+    """
     print("========== BUILDING STACK 3 ============\n")
     stack_3, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(3, 200, unit_model_paths = stack_2.unit_model_paths)
+    """

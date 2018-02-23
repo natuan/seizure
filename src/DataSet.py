@@ -1,7 +1,8 @@
 import os
+import math
 import numpy as np
 import pandas as pd
-
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import StratifiedShuffleSplit
 
 class DataSet:
@@ -29,7 +30,7 @@ class DataSet:
                            "D": 1,
                            "E": 2}
         self.segment_data_df = self.create_segment_data() # use the number of segments and target map above
-        
+    
     def read_channel_file(self, folder_name, file_name):
         """
         Read a single channel given a full path file
@@ -137,7 +138,7 @@ class DataSet:
         col_names = ["f_{}".format(i) for i in range(num_features - 1)]
         col_names.append("target_class")
         segment_data_df.columns = col_names
-        segment_data_df.sort_index(inplace=True)          
+        segment_data_df.sort_index(inplace=True)
 
         target_class_str = self._create_target_class_string()
         file_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}.csv".format(self.num_segments_per_channel, target_class_str))
@@ -195,7 +196,7 @@ class DataSet:
             test_df.to_csv(test_path)
             print(">> Done")
 
-    def load_features_and_target(self, file_path):
+    def load_features_and_target(self, file_path, signal_range = None):
         """
         Load segment data frame and separate it into features and target
 
@@ -212,5 +213,16 @@ class DataSet:
         print(">> Done\n")
         return X, y
         
-    
-        
+def min_max_scale(X, signal_range, scaling_range = (0,1)):
+    signal_min, signal_max = signal_range
+    signal_delta = signal_max - signal_min
+    scaling_min, scaling_max = scaling_range
+    scaling_delta = scaling_max - scaling_min
+    new_X = np.zeros(X.shape)
+    for i in range(X.shape[0]):
+        cutoff_Xi = [min(signal_max, max(signal_min, x)) for x in X[i]]
+        new_X[i] = [((x - signal_min) / signal_delta) * scaling_delta + scaling_min for x in cutoff_Xi]
+    test1 = scaling_min <= new_X
+    test2 = new_X <= scaling_max
+    assert(test1.all() and test2.all()), "Invalid scaled values"
+    return new_X

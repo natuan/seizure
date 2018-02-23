@@ -530,24 +530,24 @@ class StackBuilder:
                                                  checkpoint_steps=checkpoint_steps,
                                                  seed=seed)
                 print(">> Done\n")
+                print("Plotting reconstructed outputs of unit at hidden layer {}...\n".format(hidden_layer))
+                unit_plot_dir = os.path.join(unit_cache_dir, "plots")
+                [X_recon] = unit.restore_and_eval(X_train_current, unit_model_path, ["outputs"])
+                assert(X_recon.shape == X_train_current.shape), "Invalid output shape"
+                unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
+                plot_reconstructed_outputs(X_train_current, y_train, X_recon, size_per_class=n_reconstructed_examples_per_class_to_plot,
+                                           plot_dir_path=unit_reconstructed_dir, seed=seed+10)
+                print(">> Done\n")
+                print("Plotting hidden weights of unit at hidden layer {}...\n".format(hidden_layer))
+                hidden_weights = unit.hidden_weights()
+                unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
+                plot_hidden_weights(hidden_weights, n_hidden_neurons_to_plot, unit_hidden_weights_dir, seed =seed+20)
+                print(">> Done\n")                
             else:
                 print("Reloading model {} of {} for hidden layer {}...\n".format(unit_model_path, unit_name, hidden_layer))
                 unit.restore(unit_model_path)
                 model_step, all_steps = 0, 0
                 print(">> Done\n")
-            print("Plotting reconstructed outputs of unit at hidden layer {}...\n".format(hidden_layer))
-            unit_plot_dir = os.path.join(unit_cache_dir, "plots")
-            [X_recon] = unit.restore_and_eval(X_train_current, unit_model_path, ["outputs"])
-            assert(X_recon.shape == X_train_current.shape), "Invalid output shape"
-            unit_reconstructed_dir = os.path.join(unit_plot_dir, "reconstructed")
-            plot_reconstructed_outputs(X_train_current, y_train, X_recon, size_per_class=n_reconstructed_examples_per_class_to_plot,
-                                       plot_dir_path=unit_reconstructed_dir, seed=seed+10)
-            print(">> Done\n")
-            print("Plotting hidden weights of unit at hidden layer {}...\n".format(hidden_layer))
-            hidden_weights = unit.hidden_weights()
-            unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
-            plot_hidden_weights(hidden_weights, n_hidden_neurons_to_plot, unit_hidden_weights_dir, seed =seed+20)
-            print(">> Done\n")
             self.unit_model_paths[hidden_layer] = unit_model_path
             units += [unit]
             self._save_X(X_train_current, os.path.join(unit_cache_dir, "X_train_layer_{}.csv".format(hidden_layer)))
