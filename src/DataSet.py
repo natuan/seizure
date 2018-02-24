@@ -29,7 +29,7 @@ class DataSet:
                            "C": 1,
                            "D": 1,
                            "E": 2}
-        self.segment_data_df = self.create_segment_data() # use the number of segments and target map above
+        self.segment_data_df = None
     
     def read_channel_file(self, folder_name, file_name):
         """
@@ -119,7 +119,7 @@ class DataSet:
         (channel_length / num_segments_per_channel) + 1 (the last feature is the target set name)
         """
         self.num_segments_per_channel = num_segments_per_channel if num_segments_per_channel is not None else self.num_segments_per_channel
-        self.target_map = target_map if target_map is not None else self.target_map
+        target_map = target_map if target_map is not None else self.target_map
         num_segments = 5 * self.num_channels_per_set * self.num_segments_per_channel
         num_features = int(self.channel_length / self.num_segments_per_channel) + 1  # including the target feature in the last position
         segment_data_dict = {}
@@ -131,7 +131,7 @@ class DataSet:
                     start = seg_idx * (num_features - 1)
                     end = start + num_features - 1
                     key_name = s + "_" + file_name + "_" + str(start)
-                    segment_data_dict[key_name] = np.append(channel[start : end], self.target_map[s])
+                    segment_data_dict[key_name] = np.append(channel[start : end], target_map[s])
         segment_data_df = pd.DataFrame.from_dict(segment_data_dict, orient = 'index')
         segment_data_df.index.name = "segment_id"
         num_features = int(self.channel_length / self.num_segments_per_channel) + 1 # the last feature is target
@@ -142,12 +142,10 @@ class DataSet:
 
         target_class_str = self._create_target_class_string()
         file_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}.csv".format(self.num_segments_per_channel, target_class_str))
-        if (not os.path.exists(file_path)):
-            print("Saving segment data into {}...".format(file_path))
-            segment_data_df.to_csv(file_path)
-            print(">> Done")
-            
-        return segment_data_df
+        print("Saving segment data into {}...".format(file_path))
+        segment_data_df.to_csv(file_path)
+        print(">> Done") 
+        self.segment_data_df = segment_data_df
 
     def split(self, test_ratio = 0.2, random_state = 0):
         assert(self.segment_data_df is not None), "Invalid segment_data"
@@ -179,22 +177,19 @@ class DataSet:
             
         target_class_str = self._create_target_class_string()
         train_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TRAIN.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
-        if (not os.path.exists(train_path)):
-            print("Saving {}...".format(train_path))
-            train_df.to_csv(train_path)
-            print(">> Done")
+        print("Saving {}...".format(train_path))
+        train_df.to_csv(train_path)
+        print(">> Done")
 
         val_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_VALID.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
-        if (not os.path.exists(val_path)):
-            print("Saving {}...".format(val_path))
-            val_df.to_csv(val_path)
-            print(">> Done")
+        print("Saving {}...".format(val_path))
+        val_df.to_csv(val_path)
+        print(">> Done")
             
         test_path = os.path.join(self.cache_dir, "segment_numseg{}_target{}_ratio{}_rand{}_TEST.csv".format(self.num_segments_per_channel, target_class_str, test_ratio, random_state))
-        if (not os.path.exists(test_path)):
-            print("Saving {}...".format(test_path))
-            test_df.to_csv(test_path)
-            print(">> Done")
+        print("Saving {}...".format(test_path))
+        test_df.to_csv(test_path)
+        print(">> Done")
 
     def load_features_and_target(self, file_path, signal_range = None):
         """
@@ -226,3 +221,15 @@ def min_max_scale(X, signal_range, scaling_range = (0,1)):
     test2 = new_X <= scaling_max
     assert(test1.all() and test2.all()), "Invalid scaled values"
     return new_X
+
+def create_binary_data_set_class_E():
+    root_dir = "/home/natuan/MyHDD/ml_nano_capstone/"
+    data_set = DataSet(input_dir=os.path.join(root_dir, "input"),
+                       cache_dir=os.path.join(root_dir, "cache"))
+    data_set.target_map = {"A": 0,
+                           "B": 0,
+                           "C": 0,
+                           "D": 0,
+                           "E": 1}
+    data_set.create_segment_data()
+    data_set.split(test_ratio=0.15, random_state=42)

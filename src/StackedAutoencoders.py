@@ -171,6 +171,7 @@ class UnitAutoencoder:
             assert(model_step >= 0), "Invalid model step"
             all_steps = n_epochs * n_batches
             return model_step, all_steps
+        
     def hidden_weights(self):
         assert(self.params is not None), "Invalid self.params"
         return self.params["{}_hidden/kernel:0".format(self.name)]
@@ -448,6 +449,7 @@ class StackBuilder:
     def __init__(self,
                  name,
                  noise_stddev = 0.3,
+                 dropout_rate = 0.33,
                  n_hidden_layers = 3,
                  n_neurons_per_layer = 200,
                  unit_hidden_activations = tf.nn.softmax,
@@ -461,6 +463,7 @@ class StackBuilder:
                  tf_log_dir = "../tf_logs"):
         self.name = name
         self.noise_stddev = noise_stddev
+        self.dropout_rate = dropout_rate
         self.n_hidden_layers = n_hidden_layers
         self.unit_model_paths = [None] * n_hidden_layers
         self.n_neurons_per_layer = n_neurons_per_layer
@@ -513,6 +516,7 @@ class StackBuilder:
                                    n_inputs,
                                    self.n_neurons_per_layer,
                                    noise_stddev = self.noise_stddev,
+                                   dropout_rate = self.dropout_rate,
                                    hidden_activation = self.unit_hidden_activations,
                                    output_activation = self.unit_output_activations,
                                    n_observable_hidden_neurons = n_observable_hidden_neurons_per_layer,
