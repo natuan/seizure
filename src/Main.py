@@ -69,7 +69,7 @@ def build_and_train_units():
     """
     Build and train individual unit autoencoders
     """
-    noise_stddev = 0.3
+    noise_stddev = 0.05
     n_folds = 1
     n_inputs = X_train.shape[1]
     n_neurons_range = [3] #[300]
