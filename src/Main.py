@@ -119,12 +119,12 @@ def build_pretrained_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = 
     tf_log_dir = os.path.join(cache_dir, "tf_logs")
     if not os.path.exists(tf_log_dir):
         os.makedirs(tf_log_dir)
-    stack = StackBuilder(name,
-                         noise_stddev=noise_stddev,
-                         n_hidden_layers=n_hidden_layers,
-                         n_neurons_per_layer=n_neurons_per_layer,
-                         cache_dir=cache_dir,
-                         tf_log_dir=tf_log_dir)
+    stack_builder = StackBuilder(name,
+                                 noise_stddev=noise_stddev,
+                                 n_hidden_layers=n_hidden_layers,
+                                 n_neurons_per_layer=n_neurons_per_layer,
+                                 cache_dir=cache_dir,
+                                 tf_log_dir=tf_log_dir)
 
     # Training configuration
     n_epochs = 500 #100000
@@ -136,27 +136,27 @@ def build_pretrained_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = 
     n_hidden_neurons_to_plot = 1.0
     n_reconstructed_examples_per_class_to_plot = 50
 
-    stack.build_pretrained_stack(X_train_scaled,
-                                 X_valid_scaled,
-                                 y_train,
-                                 unit_model_paths=unit_model_paths,
-                                 n_observable_hidden_neurons_per_layer=n_observable_hidden_neurons_per_layer,
-                                 n_hidden_neurons_to_plot=n_hidden_neurons_to_plot,
-                                 n_reconstructed_examples_per_class_to_plot=n_reconstructed_examples_per_class_to_plot,
-                                 n_epochs=n_epochs,
-                                 batch_size=batch_size,
-                                 checkpoint_steps=checkpoint_steps,
-                                 seed=seed)
+    stack_builder.build_pretrained_stack(X_train_scaled,
+                                         X_valid_scaled,
+                                         y_train,
+                                         unit_model_paths=unit_model_paths,
+                                         n_observable_hidden_neurons_per_layer=n_observable_hidden_neurons_per_layer,
+                                         n_hidden_neurons_to_plot=n_hidden_neurons_to_plot,
+                                         n_reconstructed_examples_per_class_to_plot=n_reconstructed_examples_per_class_to_plot,
+                                         n_epochs=n_epochs,
+                                         batch_size=batch_size,
+                                         checkpoint_steps=checkpoint_steps,
+                                         seed=seed)
     train_file_path = os.path.join(cache_dir, "train_codings.csv")
     valid_file_path = os.path.join(cache_dir, "valid_codings.csv")
     test_file_path = os.path.join(cache_dir, "test_codings.csv")
-    X_train_codings = stack.encode(X_train_scaled, file_path=train_file_path)
-    X_valid_codings = stack.encode(X_valid_scaled, file_path=valid_file_path)
-    X_test_codings = stack.encode(X_test_scaled, file_path=test_file_path)
+    X_train_codings = stack_builder.encode(X_train_scaled, file_path=train_file_path)
+    X_valid_codings = stack_builder.encode(X_valid_scaled, file_path=valid_file_path)
+    X_test_codings = stack_builder.encode(X_test_scaled, file_path=test_file_path)
     assert(X_train_codings.shape[0] == X_train.shape[0]), "Invalid rows"
     assert(X_valid_codings.shape[0] == X_valid.shape[0]), "Invalid rows"
     assert(X_test_codings.shape[0] == X_test.shape[0]), "Invalid rows"
-    return stack
+    return stack_builder
 
 def fine_tune_pretrained_stack(stack, X_train, X_valid, y_train, y_valid):
     assert(stack), "Invalid stack"
@@ -215,9 +215,9 @@ if __name__ == "__main__":
     plot_reconstructed_outputs(X_test, y_test, X_test_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/test", seed = 0)
     """
     print("========== BUILDING STACK 1 ============\n")
-    stack_1 = build_pretrained_stack(1, 200, noise_stddev=0.05)
-    fine_tune_pretrained_stack(stack_1, X_train, X_valid, y_train, y_valid)
-    stack_1.stack.restore_and_eval(model_path=stack_1.stack_model_path, X_test, y_test, varlist = ["accuracy"])
+    stack_builder_1 = build_pretrained_stack(1, 200, noise_stddev=0.05)
+    fine_tune_pretrained_stack(stack_builder_1, X_train, X_valid, y_train, y_valid)
+    stack_builder_1.stack.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
     """
     print("========== BUILDING STACK 2 ============\n")
     stack_2, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(2, 200, dropout_rate=0.33, unit_model_paths = stack_1.unit_model_paths)

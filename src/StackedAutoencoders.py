@@ -610,7 +610,7 @@ class StackBuilder:
         Return: the codings of X with shape (n_examples, n_new_features)
         """
         assert(self.stack), "Invalid stack"
-        [X_codings] = self.stack.restore_and_eval(X=X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
+        [X_codings] = self.stack.restore_and_eval(self.stack_model_path, X=X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
         assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
         if file_path is not None:
             columns = ["f_{}".format(idx) for idx in range(X_codings.shape[1])]
