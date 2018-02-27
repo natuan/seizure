@@ -110,7 +110,7 @@ def build_and_train_units():
                                tf_log_dir=tf_log_dir)
 
 ############################################################################
-def build_and_train_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = None, dropout_rate = None, unit_model_paths = []):
+def build_pretrained_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = None, dropout_rate = None, unit_model_paths = []):
     # Stack configuration
     name = config_str(prefix="stack_", ratio=ratio, noise_stddev=noise_stddev, dropout_rate=dropout_rate, n_hidden_layers=n_hidden_layers, n_neurons_per_layer=n_neurons_per_layer)
     cache_dir = os.path.join(root_dir, name)
@@ -127,7 +127,7 @@ def build_and_train_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = N
                          tf_log_dir=tf_log_dir)
 
     # Training configuration
-    n_epochs = 100000
+    n_epochs = 500 #100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = n_batches 
@@ -150,14 +150,24 @@ def build_and_train_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = N
     train_file_path = os.path.join(cache_dir, "train_codings.csv")
     valid_file_path = os.path.join(cache_dir, "valid_codings.csv")
     test_file_path = os.path.join(cache_dir, "test_codings.csv")
-    X_train_codings = stack.encode(X_train_scaled, train_file_path)
-    X_valid_codings = stack.encode(X_valid_scaled, valid_file_path)
-    X_test_codings = stack.encode(X_test_scaled, test_file_path)
+    X_train_codings = stack.encode(X_train_scaled, file_path=train_file_path)
+    X_valid_codings = stack.encode(X_valid_scaled, file_path=valid_file_path)
+    X_test_codings = stack.encode(X_test_scaled, file_path=test_file_path)
     assert(X_train_codings.shape[0] == X_train.shape[0]), "Invalid rows"
     assert(X_valid_codings.shape[0] == X_valid.shape[0]), "Invalid rows"
     assert(X_test_codings.shape[0] == X_test.shape[0]), "Invalid rows"
-    return stack, X_train_codings, X_valid_codings, X_test_codings
+    return stack
 
+def fine_tune_pretrained_stack(stack, X_train, X_valid, y_train, y_valid):
+    assert(stack), "Invalid stack"
+    n_epochs = 500
+    batch_size = 64
+    n_batches = len(X_train_scaled) // batch_size
+    checkpoint_steps = n_batches
+    seed = 0
+    stack.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack.stack_model_path,
+              n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
+   
 def performance_metric(y_true, y_predict):
     score = accuracy_score(y_true, y_predict)
     return score
@@ -205,10 +215,13 @@ if __name__ == "__main__":
     plot_reconstructed_outputs(X_test, y_test, X_test_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/test", seed = 0)
     """
     print("========== BUILDING STACK 1 ============\n")
-    stack_1, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(1, 200, dropout_rate=0.33)
+    stack_1 = build_pretrained_stack(1, 200, noise_stddev=0.05)
+    fine_tune_pretrained_stack(stack_1, X_train, X_valid, y_train, y_valid)
+    stack_1.stack.restore_and_eval(model_path=stack_1.stack_model_path, X_test, y_test, varlist = ["accuracy"])
+    """
     print("========== BUILDING STACK 2 ============\n")
     stack_2, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(2, 200, dropout_rate=0.33, unit_model_paths = stack_1.unit_model_paths)
-    """
+    
     print("========== BUILDING STACK 3 ============\n")
     stack_3, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(3, 200, unit_model_paths = stack_2.unit_model_paths)
     """

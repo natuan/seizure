@@ -304,7 +304,7 @@ class StackedAutoencoders:
             reg_loss = regularizer(weights) if regularizer else None
             return hidden_drop, reg_loss
     
-    def stack_autoencoder(self, unit, layer_name
+    def stack_autoencoder(self, unit, layer_name,
                           regularizer = None,
                           input_dropout_rate = 0,
                           hidden_dropout_rate = 0):
@@ -371,7 +371,7 @@ class StackedAutoencoders:
             self.init.run()
             self.saver.save(sess, model_path)
         
-    def fit(self, X_train, X_valid, y_train, y_valid, model_path, save_best_only = True, n_epochs, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
+    def fit(self, X_train, X_valid, y_train, y_valid, model_path, save_best_only = True, n_epochs = 1000, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         assert(self.training_op is not None), "Invalid self.training_op"
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
@@ -413,19 +413,11 @@ class StackedAutoencoders:
             all_steps = n_epochs * n_batches
             return model_step, all_steps
 
-    def restore(self, model_path):
-        if self.params is not None:
-            print(">> Warning: self.params not empty and will be replaced")
-        with tf.Session(graph=self.graph) as sess:
-            self.saver.restore(sess, model_path)
-            self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
-        
-    def restore_and_eval(self, model_path, X = None, varlist = [], hidden_layer = -1, tfdebug = False):
+    def restore_and_eval(self, model_path, X, y = None, varlist = [], hidden_layer = -1, tfdebug = False):
         """
         Restore model's params and evaluate variables
 
         Arguments:
-        - model_path: full path to the model file
         - X: the input to be fed into the network
         - varlist: list of variables to evaluate. Valid values: "loss", "reconstruction_loss", "hidden_outputs", "outputs"
         - hidden_layer: the index of the hidden layer when "hidden_outputs" is requested; by default use the last hidden layer
@@ -445,23 +437,23 @@ class StackedAutoencoders:
                 return []
             assert(X is not None), "Invalid input samples"
             varmap = {"loss": self.loss,
-                      "reconstruction_loss": self.reconstruction_loss,
                       "hidden_outputs": self.hidden[-1],
-                      "outputs": self.outputs}
+                      "outputs": self.outputs,
+                      "accuracy": self.accuracy}
             vars_to_eval = []
             for var in varlist:
                 # The order of var in the list needs to be kept, thus this for-loop
                 if var == "loss":
                     vars_to_eval += [self.loss]
-                elif var == "reconstruction_loss":
-                    vars_to_eval += [self.reconstruction_loss]
                 elif var == "hidden_outputs":
                     vars_to_eval += [self.hidden[hidden_layer]]
                 elif var == "outputs":
                     vars_to_eval += [self.outputs]
-            return sess.run(vars_to_eval, feed_dict={self.X: X})
-
-    def predict(self, X_test, y_test):
+                elif var == "accuracy":
+                    assert(y), "Target must be available to evaluate accuracy"
+                    assert(len(X) == len(y)), "Invalid examples and targets sizes"
+                    vars_to_eval += [self.accuracy]
+            return sess.run(vars_to_eval, feed_dict={self.X: X, self.y: y})
         
 
 class StackBuilder:
@@ -587,11 +579,10 @@ class StackBuilder:
         stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(units))]
         for idx, unit in enumerate(units):
             self.stack.stack_autoencoder(unit, stack_hidden_layer_names[idx])
-        self.stack.stack_output_layer(layer_name="{}_outputs".format(self.name),
-                                      activation=self.output_activation,
-                                      kernel_regularizer=self.output_kernel_regularizer,
-                                      kernel_initializer=self.output_kernel_initializer,
-                                      bias_initializer=self.output_bias_initializer)
+        self.stack.stack_softmax_output_layer(layer_name="{}_outputs".format(self.name),
+                                              kernel_regularizer=self.output_kernel_regularizer,
+                                              kernel_initializer=self.output_kernel_initializer,
+                                              bias_initializer=self.output_bias_initializer)
         self.stack.finalize(optimizer=tf.train.AdamOptimizer(self.adam_lr))
         print(">> Done\n")
         print("Saving stack model to {}...\n".format(self.stack_model_path))
@@ -619,7 +610,7 @@ class StackBuilder:
         Return: the codings of X with shape (n_examples, n_new_features)
         """
         assert(self.stack), "Invalid stack"
-        [X_codings] = self.stack.restore_and_eval(model_path=self.stack_model_path, X=X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
+        [X_codings] = self.stack.restore_and_eval(X=X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
         assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
         if file_path is not None:
             columns = ["f_{}".format(idx) for idx in range(X_codings.shape[1])]
