@@ -110,19 +110,22 @@ def build_and_train_units():
                                tf_log_dir=tf_log_dir)
 
 ############################################################################
-def build_pretrained_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = None, dropout_rate = None, unit_model_paths = []):
+def build_pretrained_stack(name, preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[], dropout_rate=[]):
     # Stack configuration
-    name = config_str(prefix="stack_", ratio=ratio, noise_stddev=noise_stddev, dropout_rate=dropout_rate, n_hidden_layers=n_hidden_layers, n_neurons_per_layer=n_neurons_per_layer)
     cache_dir = os.path.join(root_dir, name)
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
+    else:
+        raise ValueError("Folder {} already exists. Rename the stack!".format(name))
     tf_log_dir = os.path.join(cache_dir, "tf_logs")
     if not os.path.exists(tf_log_dir):
         os.makedirs(tf_log_dir)
     stack_builder = StackBuilder(name,
-                                 noise_stddev=noise_stddev,
-                                 n_hidden_layers=n_hidden_layers,
+                                 preceding_units=preceding_units,
+                                 preceding_unit_model_paths= preceding_unit_model_paths,
                                  n_neurons_per_layer=n_neurons_per_layer,
+                                 noise_stddev=noise_stddev,
+                                 dropout_rate=dropout_rate,
                                  cache_dir=cache_dir,
                                  tf_log_dir=tf_log_dir)
 
@@ -139,7 +142,6 @@ def build_pretrained_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = 
     stack_builder.build_pretrained_stack(X_train_scaled,
                                          X_valid_scaled,
                                          y_train,
-                                         unit_model_paths=unit_model_paths,
                                          n_observable_hidden_neurons_per_layer=n_observable_hidden_neurons_per_layer,
                                          n_hidden_neurons_to_plot=n_hidden_neurons_to_plot,
                                          n_reconstructed_examples_per_class_to_plot=n_reconstructed_examples_per_class_to_plot,
@@ -147,26 +149,24 @@ def build_pretrained_stack(n_hidden_layers, n_neurons_per_layer, noise_stddev = 
                                          batch_size=batch_size,
                                          checkpoint_steps=checkpoint_steps,
                                          seed=seed)
-    train_file_path = os.path.join(cache_dir, "train_codings.csv")
-    valid_file_path = os.path.join(cache_dir, "valid_codings.csv")
-    test_file_path = os.path.join(cache_dir, "test_codings.csv")
-    X_train_codings = stack_builder.encode(X_train_scaled, file_path=train_file_path)
-    X_valid_codings = stack_builder.encode(X_valid_scaled, file_path=valid_file_path)
-    X_test_codings = stack_builder.encode(X_test_scaled, file_path=test_file_path)
-    assert(X_train_codings.shape[0] == X_train.shape[0]), "Invalid rows"
-    assert(X_valid_codings.shape[0] == X_valid.shape[0]), "Invalid rows"
-    assert(X_test_codings.shape[0] == X_test.shape[0]), "Invalid rows"
+    for hidden_layer in range(stack_builder.n_hidden_layers):
+        train_file_path = os.path.join(cache_dir, "train_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
+        valid_file_path = os.path.join(cache_dir, "valid_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
+        test_file_path = os.path.join(cache_dir, "test_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
+        stack = stack_builder.get_stack()
+        stack.hidden_layer_outputs(stack_builder.stack_model_path, X_train_scaled, file_path=train_file_path)
+        stack.hidden_layer_outputs(stack_builder.stack_model_path, X_valid_scaled, file_path=valid_file_path)
+        stack.hidden_layer_outputs(stack_builder.stack_model_path, X_test_scaled, file_path=test_file_path)
     return stack_builder
 
-def fine_tune_pretrained_stack(stack, X_train, X_valid, y_train, y_valid):
-    assert(stack), "Invalid stack"
+def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid):
     n_epochs = 500
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = n_batches
     seed = 0
-    stack.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack.stack_model_path,
-              n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
+    stack_builder.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack_builder.stack_model_path,
+                            n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
    
 def performance_metric(y_true, y_predict):
     score = accuracy_score(y_true, y_predict)
@@ -208,16 +208,24 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
     predict(best, X_test, y_test)
     
 if __name__ == "__main__":
-    # build_and_train_units()
-    """
-    plot_reconstructed_outputs(X_train, y_train, X_train_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/train", seed = 0)
-    plot_reconstructed_outputs(X_valid, y_valid, X_valid_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/valid", seed = 0)
-    plot_reconstructed_outputs(X_test, y_test, X_test_scaled, size_per_class=20, plot_dir_path="/home/natuan/MyHDD/ml_nano_capstone/tmp/test", seed = 0)
-    """
+
     print("========== BUILDING STACK 1 ============\n")
-    stack_builder_1 = build_pretrained_stack(1, 200, noise_stddev=0.05)
+    name = "stack_1"
+    preceding_units=[]
+    preceding_unit_model_paths = []
+    n_neurons_per_layer = [5, 5]
+    noise_stddev = [0.05] * len(n_neurons_per_layer)
+    dropout_rate = [None] * len(n_neurons_per_layer)
+    stack_builder_1 = build_pretrained_stack(name,
+                                             preceding_units=preceding_units,
+                                             preceding_unit_model_paths=preceding_unit_model_paths,
+                                             n_neurons_per_layer=n_neurons_per_layer,
+                                             noise_stddev=noise_stddev,
+                                             dropout_rate=dropout_rate)
     fine_tune_pretrained_stack(stack_builder_1, X_train, X_valid, y_train, y_valid)
-    stack_builder_1.stack.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
+    stack = stack_builder_1.get_stack()
+    accuracy = stack.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
+    print("Accuracy: {}".format(accuracy))
     """
     print("========== BUILDING STACK 2 ============\n")
     stack_2, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(2, 200, dropout_rate=0.33, unit_model_paths = stack_1.unit_model_paths)

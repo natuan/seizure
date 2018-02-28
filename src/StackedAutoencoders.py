@@ -238,7 +238,11 @@ class UnitAutoencoder:
                     vars_to_eval += [self.outputs]
             return sess.run(vars_to_eval, feed_dict={self.X: X})
 
-
+##################################################################################
+##
+## StackAutoencoders class
+##
+##################################################################################
 class StackedAutoencoders:
     def __init__(self,
                  name,
@@ -450,37 +454,81 @@ class StackedAutoencoders:
                 elif var == "outputs":
                     vars_to_eval += [self.outputs]
                 elif var == "accuracy":
-                    assert(y), "Target must be available to evaluate accuracy"
                     assert(len(X) == len(y)), "Invalid examples and targets sizes"
                     vars_to_eval += [self.accuracy]
+            y = np.zeros((len(X), 1)) if y is None else y
             return sess.run(vars_to_eval, feed_dict={self.X: X, self.y: y})
         
+    def hidden_layer_outputs(self, model_path, X, hidden_layer = -1, file_path = None):
+        """
+        Compute the codings of an input by the network
 
+        Arguments:
+        - X: the input to be fed into the network with shape (n_examples, n_features)
+        - file_path (optional): path to a csv file for storing the resulting codings
+
+        Return: the codings of X with shape (n_examples, n_new_features)
+        """
+        [X_codings] = self.restore_and_eval(model_path, X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
+        assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
+        if file_path is not None:
+            columns = ["f_{}".format(idx) for idx in range(X_codings.shape[1])]
+            df = pd.DataFrame(data=X_codings, columns=columns)
+            df.to_csv(file_path)
+        return X_codings
+
+        
+##################################################################################
+##
+## StackBuilder class
+##
+##################################################################################
 class StackBuilder:
     """
     Utility class to build a stacked autoencoder with predefined specification
     """
     def __init__(self,
                  name,
-                 noise_stddev = 0.3,
-                 dropout_rate = 0.33,
-                 n_hidden_layers = 3,
-                 n_neurons_per_layer = 200,
-                 unit_hidden_activations = tf.nn.softmax,
-                 unit_output_activations = None,
-                 output_activation = tf.nn.softmax,
+                 preceding_units = [],
+                 preceding_unit_model_paths = [],
+                 n_neurons_per_layer = [],
+                 noise_stddev = [],
+                 dropout_rate = [],
+                 unit_hidden_activations = tf.nn.softmax, # of hidden layers
+                 unit_output_activations = None,          # of hidden layers
+                 output_activation = tf.nn.softmax, # of output layer
                  output_kernel_regularizer = None,
                  output_kernel_initializer = tf.contrib.layers.variance_scaling_initializer(),
                  output_bias_initializer = tf.zeros_initializer(),
                  adam_lr = 5*1e-6,
                  cache_dir = "../cache",
                  tf_log_dir = "../tf_logs"):
+        """
+        Ctor
+        
+        Arguments:
+        - name: name of the stack
+        - preceding_units: units that have been trained and will be reused
+        - preceding_units_model_path: paths to model file of preceding units
+        - n_neurons_per_layer: array of number of hidden neurons after the reused units
+        - noise_stddev: array of noise_stddev to be used for new units after the reused ones
+        - dropout_rate: similar to noise_stddev array
+
+        """
         self.name = name
+        self.preceding_units = preceding_units
+        self.preceding_unit_model_paths = preceding_unit_model_paths # for reuse trained unit autoencoders
+        assert(len(self.preceding_units) == len(self.preceding_unit_model_paths)), "Invalid preceding units"
+        self.n_neurons_per_layer = n_neurons_per_layer
         self.noise_stddev = noise_stddev
         self.dropout_rate = dropout_rate
-        self.n_hidden_layers = n_hidden_layers
-        self.unit_model_paths = [None] * n_hidden_layers
-        self.n_neurons_per_layer = n_neurons_per_layer
+        self.n_hidden_layers = len(self.n_neurons_per_layer) + len(self.preceding_units)
+        if self.n_hidden_layers <= 0:
+            raise ValueError("Stack cannot be created empty")
+        assert(len(self.noise_stddev) == len(self.n_neurons_per_layer)), "Invalid noise_stddev array"
+        assert(len(self.dropout_rate) == len(self.n_neurons_per_layer)), "Invalid dropout rate array"
+        self.unit_model_paths = [None] * self.n_hidden_layers
+        self.units = [None] * self.n_hidden_layers
         self.unit_hidden_activations = unit_hidden_activations
         self.unit_output_activations = unit_output_activations
         self.output_activation = output_activation
@@ -499,12 +547,17 @@ class StackBuilder:
         columns = ["f_{}".format(idx) for idx in range(X.shape[1])]
         df = pd.DataFrame(data=X, columns=columns)
         df.to_csv(file_path)
-        
+
+    def get_stack(self):
+        return self.stack
+
+    def get_units_and_model_paths(self):
+        return self.units, self.unit_model_paths
+    
     def build_pretrained_stack(self,
                                X_train,
                                X_valid,
                                y_train,
-                               unit_model_paths = [],
                                n_observable_hidden_neurons_per_layer = 0,
                                n_hidden_neurons_to_plot = 20,
                                n_reconstructed_examples_per_class_to_plot = 20,
@@ -526,18 +579,24 @@ class StackBuilder:
             if not os.path.exists(unit_tf_log_dir):
                 os.makedirs(unit_tf_log_dir)
             n_inputs = X_train_current.shape[1]
+            is_preceding_unit = hidden_layer < len(self.preceding_units)
+            n_neurons = self.preceding_units[hidden_layer].n_neurons if is_preceding_unit else self.n_neurons_per_layer[hidden_layer - len(self.preceding_units)]
+            noise_stddev = self.preceding_units[hidden_layer].noise_stddev if is_preceding_unit else self.noise_stddev[hidden_layer - len(self.preceding_units)]
+            dropout_rate = self.preceding_units[hidden_layer].dropout_rate if is_preceding_unit else self.dropout_rate[hidden_layer - len(self.preceding_units)]
             unit = UnitAutoencoder(unit_name,
                                    n_inputs,
-                                   self.n_neurons_per_layer,
-                                   noise_stddev = self.noise_stddev,
-                                   dropout_rate = self.dropout_rate,
+                                   n_neurons,
+                                   noise_stddev=noise_stddev,
+                                   dropout_rate=dropout_rate,
                                    hidden_activation = self.unit_hidden_activations,
                                    output_activation = self.unit_output_activations,
                                    n_observable_hidden_neurons = n_observable_hidden_neurons_per_layer,
-                                   regularizer = None,
+                                   regularizer = None, # To be added if regularization is used
                                    optimizer = tf.train.AdamOptimizer(self.adam_lr),
                                    tf_log_dir = unit_tf_log_dir)
-            unit_model_path = unit_model_paths[hidden_layer] if hidden_layer < len(unit_model_paths) else os.path.join(unit_cache_dir, "{}.model".format(unit_name))
+            
+            # Try to reuse trained model if specified
+            unit_model_path = self.preceding_unit_model_paths[hidden_layer] if hidden_layer < len(self.preceding_units) else os.path.join(unit_cache_dir, "{}.model".format(unit_name))
             if not os.path.exists("{}.meta".format(unit_model_path)):
                 print("Training {} for hidden layer {}...\n".format(unit_name, hidden_layer))
                 model_step, all_steps = unit.fit(X_train_current,
@@ -566,8 +625,8 @@ class StackBuilder:
                 unit.restore(unit_model_path)
                 model_step, all_steps = 0, 0
                 print(">> Done\n")
-            self.unit_model_paths[hidden_layer] = unit_model_path
-            units += [unit]
+            self.unit_model_paths[hidden_layer] = unit_model_path # This can be passed to subsequent stack built upon this one
+            self.units[hidden_layer] = unit
             self._save_X(X_train_current, os.path.join(unit_cache_dir, "X_train_layer_{}.csv".format(hidden_layer)))
             self._save_X(X_valid_current, os.path.join(unit_cache_dir, "X_valid_layer_{}.csv".format(hidden_layer)))
             [train_reconstruction_loss, X_train_current] = unit.restore_and_eval(X_train_current, unit_model_path, ["reconstruction_loss", "hidden_outputs"])
@@ -577,7 +636,7 @@ class StackBuilder:
         print("Stacking up pretrained units...\n")
         self.stack = StackedAutoencoders(name=self.name, cache_dir=self.stack_cache_dir, tf_log_dir=self.stack_tf_log_dir)
         stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(units))]
-        for idx, unit in enumerate(units):
+        for idx, unit in enumerate(self.units):
             self.stack.stack_autoencoder(unit, stack_hidden_layer_names[idx])
         self.stack.stack_softmax_output_layer(layer_name="{}_outputs".format(self.name),
                                               kernel_regularizer=self.output_kernel_regularizer,
@@ -588,7 +647,6 @@ class StackBuilder:
         print("Saving stack model to {}...\n".format(self.stack_model_path))
         self.stack.save(self.stack_model_path)
         print(">> Done\n")
-
         result_file_path = os.path.join(self.stack_cache_dir, "hidden_layer_units.csv")
         print("Saving results of building hidden layer units to {}...\n".format(result_file_path))
         columns = ["train_reconstruction_loss", "valid_reconstruction_loss", "step_of_best_model", "all_steps", "unit_model_path"]
@@ -597,27 +655,24 @@ class StackBuilder:
         df.columns = columns
         df.sort_index(inplace=True)
         df.to_csv(result_file_path)
+        print(">> Done\n")
         
-
-    def encode(self, X, hidden_layer = -1, file_path = None):
-        """
-        Compute the codings of an input by the network
-
-        Arguments:
-        - X: the input to be fed into the network with shape (n_examples, n_features)
-        - file_path (optional): path to a csv file for storing the resulting codings
-
-        Return: the codings of X with shape (n_examples, n_new_features)
-        """
-        assert(self.stack), "Invalid stack"
-        [X_codings] = self.stack.restore_and_eval(self.stack_model_path, X=X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
-        assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
-        if file_path is not None:
-            columns = ["f_{}".format(idx) for idx in range(X_codings.shape[1])]
-            df = pd.DataFrame(data=X_codings, columns=columns)
-            df.to_csv(file_path)
-        return X_codings
+    def fine_tune_pretrained_stack(self, X_train, X_valid, y_train, y_valid,
+                                   n_epochs,
+                                   batch_size,
+                                   checkpoint_steps,
+                                   seed):
+        assert(self.stack), "Empty stack"
+        assert(self.stack_model_path and os.path.exists("{}.meta".format(self.stack_model_path))), "self.stack_model_path is expected"
+        self.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack.stack_model_path,
+                       n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
+        
     
+##################################################################################
+##
+## Supporting functions
+##
+##################################################################################
 def generate_unit_autoencoders(X_train,
                                X_valid,
                                y_train,
