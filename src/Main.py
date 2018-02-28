@@ -109,13 +109,18 @@ def build_and_train_units():
                                cache_dir=cache_dir,
                                tf_log_dir=tf_log_dir)
 
-############################################################################
-def build_pretrained_stack(name, preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[], dropout_rate=[]):
+############################################################################################
+##
+## Experiment with stacking autoencoders
+##
+############################################################################################
+def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
+                           preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[], dropout_rate=[]):
     # Stack configuration
     cache_dir = os.path.join(root_dir, name)
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
-    else:
+    elif force_rename:
         raise ValueError("Folder {} already exists. Rename the stack!".format(name))
     tf_log_dir = os.path.join(cache_dir, "tf_logs")
     if not os.path.exists(tf_log_dir):
@@ -130,7 +135,7 @@ def build_pretrained_stack(name, preceding_units=[], preceding_unit_model_paths=
                                  tf_log_dir=tf_log_dir)
 
     # Training configuration
-    n_epochs = 500 #100000
+    n_epochs = 10000 #100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = n_batches 
@@ -142,6 +147,7 @@ def build_pretrained_stack(name, preceding_units=[], preceding_unit_model_paths=
     stack_builder.build_pretrained_stack(X_train_scaled,
                                          X_valid_scaled,
                                          y_train,
+                                         ordinary_stack=ordinary_stack,
                                          n_observable_hidden_neurons_per_layer=n_observable_hidden_neurons_per_layer,
                                          n_hidden_neurons_to_plot=n_hidden_neurons_to_plot,
                                          n_reconstructed_examples_per_class_to_plot=n_reconstructed_examples_per_class_to_plot,
@@ -154,20 +160,25 @@ def build_pretrained_stack(name, preceding_units=[], preceding_unit_model_paths=
         valid_file_path = os.path.join(cache_dir, "valid_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
         test_file_path = os.path.join(cache_dir, "test_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
         stack = stack_builder.get_stack()
-        stack.hidden_layer_outputs(stack_builder.stack_model_path, X_train_scaled, file_path=train_file_path)
-        stack.hidden_layer_outputs(stack_builder.stack_model_path, X_valid_scaled, file_path=valid_file_path)
-        stack.hidden_layer_outputs(stack_builder.stack_model_path, X_test_scaled, file_path=test_file_path)
+        stack.get_codings(stack_builder.stack_model_path, X_train_scaled, file_path=train_file_path)
+        stack.get_codings(stack_builder.stack_model_path, X_valid_scaled, file_path=valid_file_path)
+        stack.get_codings(stack_builder.stack_model_path, X_test_scaled, file_path=test_file_path)
     return stack_builder
 
 def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid):
-    n_epochs = 500
+    n_epochs = 10000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = n_batches
     seed = 0
     stack_builder.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack_builder.stack_model_path,
                             n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
-   
+
+############################################################################################
+##
+## Utils
+##
+############################################################################################
 def performance_metric(y_true, y_predict):
     score = accuracy_score(y_true, y_predict)
     return score
@@ -210,26 +221,50 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_1"
+    name = "stack_50"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [5, 5]
+    n_neurons_per_layer = [50]
     noise_stddev = [0.05] * len(n_neurons_per_layer)
     dropout_rate = [None] * len(n_neurons_per_layer)
+    print("Start: Build pretrained stack...\n")
     stack_builder_1 = build_pretrained_stack(name,
                                              preceding_units=preceding_units,
                                              preceding_unit_model_paths=preceding_unit_model_paths,
                                              n_neurons_per_layer=n_neurons_per_layer,
                                              noise_stddev=noise_stddev,
                                              dropout_rate=dropout_rate)
+    print("End: Build pretrained stack 1\n")
+    print("Start: Fine tuning the pretrained stack...\n")
     fine_tune_pretrained_stack(stack_builder_1, X_train, X_valid, y_train, y_valid)
-    stack = stack_builder_1.get_stack()
-    accuracy = stack.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
-    print("Accuracy: {}".format(accuracy))
-    """
+    print("End: Fine tuning the pretrained stack 1\n")
+    stack_1 = stack_builder_1.get_stack()
+    accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
+    print("Accuracy by stack 1: {}".format(accuracy))
+
+
     print("========== BUILDING STACK 2 ============\n")
-    stack_2, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(2, 200, dropout_rate=0.33, unit_model_paths = stack_1.unit_model_paths)
+    name = "stack_50_50"
+    preceding_units, preceding_unit_model_paths = stack_builder_1.get_units_and_model_paths()
+    n_neurons_per_layer = [50]
+    noise_stddev = [0.05] * len(n_neurons_per_layer)
+    dropout_rate = [None] * len(n_neurons_per_layer)
+    stack_builder_2 = build_pretrained_stack(name,
+                                             preceding_units=preceding_units,
+                                             preceding_unit_model_paths=preceding_unit_model_paths,
+                                             n_neurons_per_layer=n_neurons_per_layer,
+                                             noise_stddev=noise_stddev,
+                                             dropout_rate=dropout_rate)
+    print("End: Build pretrained stack 2\n")
+    print("Start: Fine tuning the pretrained stack...\n")
+    fine_tune_pretrained_stack(stack_builder_2, X_train, X_valid, y_train, y_valid)
+    print("End: Fine tuning the pretrained stack 2\n")
+    stack_2 = stack_builder_2.get_stack()
+    accuracy = stack_2.restore_and_eval(model_path=stack_builder_2.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
+    print("Accuracy by stack 2: {}".format(accuracy))
+    """
     
+    """
     print("========== BUILDING STACK 3 ============\n")
     stack_3, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(3, 200, unit_model_paths = stack_2.unit_model_paths)
     """

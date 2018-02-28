@@ -34,6 +34,7 @@ class UnitAutoencoder:
         Ctor
         
         Arguments:
+        - name: name of the unit
         - n_inputs: number of inputs; also the number of neurons in the output layer
         - n_neurons: number of neurons in the hidden layer
         - noise_stddev: standard deviation of the Gaussian noise; not used if None
@@ -48,7 +49,9 @@ class UnitAutoencoder:
         self.noise_stddev = noise_stddev
         self.dropout_rate = dropout_rate
         self.hidden_activation = hidden_activation
+        self.output_activation = output_activation
         self.regularizer = regularizer
+        self.initializer = initializer
         self.n_observable_hidden_neurons = 0
         if (n_observable_hidden_neurons > 0):
             if isinstance(n_observable_hidden_neurons, numbers.Integral):
@@ -63,26 +66,25 @@ class UnitAutoencoder:
         with self.graph.as_default():
             self.X = tf.placeholder(tf.float32, shape=[None, n_inputs], name="X")
             self.training = tf.placeholder_with_default(False, shape=(), name='training')
-            if (noise_stddev is not None):
+            if (self.noise_stddev is not None):
                 X_noisy = tf.cond(self.training,
-                                  lambda: self.X + tf.random_normal(tf.shape(self.X), stddev = noise_stddev),
+                                  lambda: self.X + tf.random_normal(tf.shape(self.X), stddev = self.noise_stddev),
                                   lambda: self.X)
-            elif (dropout_rate is not None):
-                X_noisy = tf.layers.dropout(self.X, dropout_rate, training=self.training)
+            elif (self.dropout_rate is not None):
+                X_noisy = tf.layers.dropout(self.X, self.dropout_rate, training=self.training)
             else:
                 X_noisy = self.X
-            self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))            
+            self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))
             self.outputs = tf.layers.dense(self.hidden, n_inputs, activation=output_activation, kernel_regularizer = regularizer, name="{}_outputs".format(self.name))
-            self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)                
+            self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
             self.loss = tf.add_n([self.reconstruction_loss] + self.reg_losses)
             self.training_op = optimizer.minimize(self.loss)
             self.init = tf.global_variables_initializer()
             self.saver = tf.train.Saver()
-            
+
             loss_str = "Reconstruction_and_regularizer loss" if regularizer else "Reconstruction_loss"
             self.loss_summary = tf.summary.scalar(loss_str, self.loss)
-
             # Ops to observe neurons
             if (self.n_observable_hidden_neurons > 0):
                 trainable_vars = dict([(var.name, var) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
@@ -107,7 +109,7 @@ class UnitAutoencoder:
         # Dictionary of trainable parameters: key = variable name, values are their values (after training or
         # restored from a model)
         self.params = None        
-
+        
     def _variable_summaries(self, var, tag):
       """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
       with tf.name_scope(tag):
@@ -175,7 +177,19 @@ class UnitAutoencoder:
     def hidden_weights(self):
         assert(self.params is not None), "Invalid self.params"
         return self.params["{}_hidden/kernel:0".format(self.name)]
-        
+
+    def hidden_biases(self):
+        assert(self.params is not None), "Invalid self.params"
+        return self.params["{}_hidden/bias:0".format(self.name)]
+    
+    def output_weights(self):
+        assert(self.params is not None), "Invalid self.params"
+        return self.params["{}_output/kernel:0".format(self.name)]
+
+    def output_biases(self):
+        assert(self.params is not None), "Invalid self.params"
+        return self.params["{}_output/bias:0".format(self.name)]
+    
     def restore(self, model_path):
         if self.params is not None:
             print(">> Warning: self.params not empty and will be replaced")
@@ -258,33 +272,15 @@ class StackedAutoencoders:
         self.X = None
         self.training = None
         self.loss = None
-        self.hidden = []
-        self.outputs = None
+        self.hidden = []  # outputs of all hidden layers
+        self.outputs = None # the final output layer
+        self.encoders = []
+        self.decoders = []
         self.training_op = None
         self.saver = None
         self.loss_summary = None
         self.summary = None
         self.train_file_writer = None        
-
-    def _check_unit_validity(self, unit):
-        """
-        Check if a unit is suitable to be stacked up
-
-        Params:
-        - unit: a unit that is about to be stacked up
-
-        Return: true if this unit's name has not been used by any units on the stack, and 
-        its inputs shape fits with the top one on the current stack; false otherwise.
-        """
-        n_units = len(self.stacked_units)
-        if n_units > 0:
-            top_unit = self.stacked_units[n_units - 1]
-            if top_unit.n_neurons != unit.n_inputs:
-                return False
-            for u in self.stacked_units:
-                if u.name == unit.name:
-                    return False
-        return True
 
     def _add_hidden_layer(self, input_tensor, unit, layer_name,
                           regularizer,
@@ -293,11 +289,9 @@ class StackedAutoencoders:
         assert(unit.params), "Invalid unit.params"
         with tf.name_scope(layer_name):
             input_drop = tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
-            kernel_name = "{}_hidden/kernel:0".format(unit.name)
-            bias_name = "{}_hidden/bias:0".format(unit.name)
-            weights = tf.Variable(unit.params[kernel_name], name = "weights")
+            weights = tf.Variable(unit.hidden_weights(), name = "weights")
             assert(weights.shape == (unit.n_inputs, unit.n_neurons)), "Wrong assumption about weight's shape"
-            biases = tf.Variable(unit.params[bias_name], name = "biases")
+            biases = tf.Variable(unit.hidden_biases(), name = "biases")
             assert(biases.shape == (unit.n_neurons,)), "Wrong assumption about bias's shape"
             pre_activations = tf.matmul(input_drop, weights) + biases
             if unit.hidden_activation is not None:
@@ -307,12 +301,31 @@ class StackedAutoencoders:
             hidden_drop = tf.layers.dropout(hidden_outputs, rate=hidden_dropout_rate, training=self.training)
             reg_loss = regularizer(weights) if regularizer else None
             return hidden_drop, reg_loss
-    
-    def stack_autoencoder(self, unit, layer_name,
-                          regularizer = None,
-                          input_dropout_rate = 0,
-                          hidden_dropout_rate = 0):
-        assert(self._check_unit_validity(unit)), "Invalid unit autoencoder"
+
+    def _add_output_layer(self, input_tensor, unit, layer_name,
+                          regularizer,
+                          input_dropout_rate,
+                          output_dropout_rate):
+        assert(unit.params), "Invalid unit.params"
+        with tf.name_scope(layer_name):
+            input_drop = tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
+            weights = tf.Variable(unit.output_weights(), name = "weights")
+            assert(weights.shape == (unit.n_inputs, unit.n_neurons)), "Wrong assumption about weight's shape"
+            biases = tf.Variable(unit.output_biases(), name = "biases")
+            assert(biases.shape == (unit.n_neurons,)), "Wrong assumption about bias's shape"
+            pre_activations = tf.matmul(input_drop, weights) + biases
+            if unit.output_activation is not None:
+                outputs = unit.output_activation(pre_activations, name = "hidden_outputs")
+            else:
+                outputs = pre_activations
+            outputs_drop = tf.layers.dropout(outputs, rate=output_dropout_rate, training=self.training)
+            reg_loss = regularizer(weights) if regularizer else None
+            return outputs_drop, reg_loss
+        
+    def stack_encoder(self, unit, layer_name,
+                      regularizer = None,
+                      input_dropout_rate = 0,
+                      hidden_dropout_rate = 0):
         self.graph = tf.Graph() if self.graph is None else self.graph
         with self.graph.as_default():
             intput_tensor = None
@@ -326,9 +339,31 @@ class StackedAutoencoders:
             hidden, reg_loss = self._add_hidden_layer(input_tensor, unit, layer_name,
                                                       regularizer, input_dropout_rate, hidden_dropout_rate)
             self.hidden += [hidden]
+            self.encoders += [hidden]
             if reg_loss is not None:
                 self.loss = tf.add_n([self.loss, reg_loss]) if self.loss is not None else reg_loss
-        
+
+    def stack_decoder(self, unit, layer_name,
+                      is_reconstruction_layer = False,
+                      regularizer = None,
+                      input_dropout_rate = 0,
+                      output_dropout_rate = 0):
+        self.graph = tf.Graph() if self.graph is None else self.graph
+        with self.graph.as_default():
+            assert(self.hidden), "Empty encoder layers"
+            input_tensor = self.hidden[-1]
+            outputs, reg_loss = self._add_output_layer(input_tensor, unit, layer_name,
+                                                       regularizer, input_dropout_rate, output_dropout_rate)
+            if reg_loss is not None:
+                self.loss = tf.add_n([self.loss, reg_loss]) if self.loss is not None else reg_loss
+            if is_reconstruction_layer:
+                self.outputs = outputs
+                reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
+                self.loss = tf.add_n([self.loss, reconstruction_loss]) if self.loss is not None else reconstruction_loss
+            else:
+                self.hidden += [outputs]
+                self.decoders += [outputs]
+                
     def stack_softmax_output_layer(self,
                                    layer_name,
                                    kernel_regularizer = None,
@@ -344,11 +379,11 @@ class StackedAutoencoders:
                 biases = tf.get_variable(name="biases",
                                          shape=(self.X.shape[1], ),
                                          initializer=bias_initializer)
-                self.logits = tf.matmul(self.hidden[-1], weights) + biases
+                self.outputs = tf.matmul(self.hidden[-1], weights) + biases
             with tf.variable_scope("loss"):
-                self.cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.y, logits=self.logits)
-                self.entropy_loss = tf.reduce_mean(self.cross_entropy, name="entropy_loss")
-                self.loss = tf.add_n([self.loss, self.entropy_loss]) if self.loss is not None else self.entropy_loss
+                cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.y, logits=self.outputs)
+                entropy_loss = tf.reduce_mean(cross_entropy, name="entropy_loss")
+                self.loss = tf.add_n([self.loss, entropy_loss]) if self.loss is not None else entropy_loss
                 self.loss = tf.add_n([self.loss, kernel_regularizer(weights)]) if kernel_regularizer is not None else self.loss
             
     def finalize(self, optimizer):
@@ -357,7 +392,7 @@ class StackedAutoencoders:
             with tf.variable_scope("training"):
                 self.training_op = optimizer.minimize(self.loss)
             with tf.variable_scope("testing"):
-                self.correct = tf.nn.in_top_k(self.logits, self.y, 1)
+                self.correct = tf.nn.in_top_k(self.outputs, self.y, 1)
                 self.accuracy = tf.reduce_mean(tf.cast(self.correct, tf.float32))
             with tf.variable_scope("summary"):
                 self.loss_summary = tf.summary.scalar("Loss", self.loss)
@@ -417,14 +452,13 @@ class StackedAutoencoders:
             all_steps = n_epochs * n_batches
             return model_step, all_steps
 
-    def restore_and_eval(self, model_path, X, y = None, varlist = [], hidden_layer = -1, tfdebug = False):
+    def restore_and_eval(self, model_path, X, y = None, varlist = [], tfdebug = False):
         """
         Restore model's params and evaluate variables
 
         Arguments:
         - X: the input to be fed into the network
         - varlist: list of variables to evaluate. Valid values: "loss", "reconstruction_loss", "hidden_outputs", "outputs"
-        - hidden_layer: the index of the hidden layer when "hidden_outputs" is requested; by default use the last hidden layer
 
         Return: a list of evaluated variables
 
@@ -449,8 +483,8 @@ class StackedAutoencoders:
                 # The order of var in the list needs to be kept, thus this for-loop
                 if var == "loss":
                     vars_to_eval += [self.loss]
-                elif var == "hidden_outputs":
-                    vars_to_eval += [self.hidden[hidden_layer]]
+                elif var == "codings":
+                    vars_to_eval += [self.encoders[-1]]
                 elif var == "outputs":
                     vars_to_eval += [self.outputs]
                 elif var == "accuracy":
@@ -459,7 +493,7 @@ class StackedAutoencoders:
             y = np.zeros((len(X), 1)) if y is None else y
             return sess.run(vars_to_eval, feed_dict={self.X: X, self.y: y})
         
-    def hidden_layer_outputs(self, model_path, X, hidden_layer = -1, file_path = None):
+    def get_codings(self, model_path, X, file_path = None):
         """
         Compute the codings of an input by the network
 
@@ -469,7 +503,7 @@ class StackedAutoencoders:
 
         Return: the codings of X with shape (n_examples, n_new_features)
         """
-        [X_codings] = self.restore_and_eval(model_path, X, varlist=["hidden_outputs"], hidden_layer=hidden_layer)
+        [X_codings] = self.restore_and_eval(model_path, X, varlist=["codings"])
         assert(X.shape[0] == X_codings.shape[0]), "Invalid number of rows in the codings"
         if file_path is not None:
             columns = ["f_{}".format(idx) for idx in range(X_codings.shape[1])]
@@ -558,6 +592,7 @@ class StackBuilder:
                                X_train,
                                X_valid,
                                y_train,
+                               ordinary_stack = False,
                                n_observable_hidden_neurons_per_layer = 0,
                                n_hidden_neurons_to_plot = 20,
                                n_reconstructed_examples_per_class_to_plot = 20,
@@ -635,13 +670,22 @@ class StackBuilder:
             
         print("Stacking up pretrained units...\n")
         self.stack = StackedAutoencoders(name=self.name, cache_dir=self.stack_cache_dir, tf_log_dir=self.stack_tf_log_dir)
-        stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(units))]
-        for idx, unit in enumerate(self.units):
-            self.stack.stack_autoencoder(unit, stack_hidden_layer_names[idx])
-        self.stack.stack_softmax_output_layer(layer_name="{}_outputs".format(self.name),
-                                              kernel_regularizer=self.output_kernel_regularizer,
-                                              kernel_initializer=self.output_kernel_initializer,
-                                              bias_initializer=self.output_bias_initializer)
+        if (not ordinary_stack):
+            stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(self.units))]
+            for idx, unit in enumerate(self.units):
+                self.stack.stack_encoder(unit, stack_hidden_layer_names[idx])
+            self.stack.stack_softmax_output_layer(layer_name="{}_softmax_outputs".format(self.name),
+                                                  kernel_regularizer=self.output_kernel_regularizer,
+                                                  kernel_initializer=self.output_kernel_initializer,
+                                                  bias_initializer=self.output_bias_initializer)
+        else:
+            stack_encoder_layer_names = ["{}_encoder_{}".format(self.name, str(idx)) for idx in range(len(self.units))]
+            for idx, unit in enumerate(self.units):
+                self.stack.stack_encoder(unit, stack_encoder_layer_names[idx])
+            stack_decoder_layer_names = ["{}_decoder_{}".format(self.name, str(idx)) for idx in range(len(self.units))]
+            for idx, unit in enumerate(reversed(self.units)):
+                is_reconstruction_layer = (idx == len(self.units) - 1)
+                self.stack.stack_decoder(unit, stack_decoder_layer_names[idx], is_reconstruction_layer=is_reconstruction_layer)
         self.stack.finalize(optimizer=tf.train.AdamOptimizer(self.adam_lr))
         print(">> Done\n")
         print("Saving stack model to {}...\n".format(self.stack_model_path))
