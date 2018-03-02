@@ -22,7 +22,8 @@ class UnitAutoencoder:
                  n_inputs,
                  n_neurons,
                  noise_stddev = None,
-                 dropout_rate = None,
+                 input_dropout_rate = None,
+                 hidden_dropout_rate = None,
                  hidden_activation = tf.nn.softmax,
                  output_activation = None,
                  n_observable_hidden_neurons = 0,
@@ -47,7 +48,8 @@ class UnitAutoencoder:
         self.n_inputs = n_inputs
         self.n_neurons = n_neurons
         self.noise_stddev = noise_stddev
-        self.dropout_rate = dropout_rate
+        self.input_dropout_rate = input_dropout_rate
+        self.hidden_dropout_rate = hidden_dropout_rate
         self.hidden_activation = hidden_activation
         self.output_activation = output_activation
         self.regularizer = regularizer
@@ -70,11 +72,15 @@ class UnitAutoencoder:
                 X_noisy = tf.cond(self.training,
                                   lambda: self.X + tf.random_normal(tf.shape(self.X), stddev = self.noise_stddev),
                                   lambda: self.X)
-            elif (self.dropout_rate is not None):
-                X_noisy = tf.layers.dropout(self.X, self.dropout_rate, training=self.training)
+            elif (self.input_dropout_rate is not None):
+                X_noisy = tf.layers.dropout(self.X, self.input_dropout_rate, training=self.training)
             else:
                 X_noisy = self.X
-            self.hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))
+            dense_hidden = tf.layers.dense(X_noisy, n_neurons, activation=hidden_activation, kernel_regularizer = regularizer, name="{}_hidden".format(self.name))
+            if self.hidden_dropout_rate is None:
+                self.hidden = dense_hidden
+            else:
+                self.hidden = tf.layers.dropout(dense_hidden, self.hidden_dropout_rate, training=self.training)
             self.outputs = tf.layers.dense(self.hidden, n_inputs, activation=output_activation, kernel_regularizer = regularizer, name="{}_outputs".format(self.name))
             self.reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             self.reconstruction_loss = tf.reduce_mean(tf.square(self.outputs - self.X))
@@ -544,7 +550,8 @@ class StackBuilder:
                  preceding_unit_model_paths = [],
                  n_neurons_per_layer = [],
                  noise_stddev = [],
-                 dropout_rate = [],
+                 unit_input_dropout_rate = [],
+                 unit_hidden_dropout_rate = [],
                  stack_input_dropout_rate = 0,
                  stack_hidden_dropout_rate = [],
                  unit_hidden_activations = tf.nn.softmax, # of hidden layers
@@ -574,12 +581,14 @@ class StackBuilder:
         assert(len(self.preceding_units) == len(self.preceding_unit_model_paths)), "Invalid preceding units"
         self.n_neurons_per_layer = n_neurons_per_layer
         self.noise_stddev = noise_stddev
-        self.dropout_rate = dropout_rate
+        self.unit_input_dropout_rate = unit_input_dropout_rate
+        self.unit_hidden_dropout_rate = unit_hidden_dropout_rate
         self.n_hidden_layers = len(self.n_neurons_per_layer) + len(self.preceding_units)
         if self.n_hidden_layers <= 0:
             raise ValueError("Stack cannot be created empty")
         assert(len(self.noise_stddev) == len(self.n_neurons_per_layer)), "Invalid noise_stddev array"
-        assert(len(self.dropout_rate) == len(self.n_neurons_per_layer)), "Invalid dropout rate array"
+        assert(len(self.unit_input_dropout_rate) == len(self.n_neurons_per_layer)), "Invalid input dropout rate array"
+        assert(len(self.unit_hidden_dropout_rate) == len(self.n_neurons_per_layer)), "Invalid hidden dropout rate array"
         self.stack_input_dropout_rate = stack_input_dropout_rate
         self.stack_hidden_dropout_rate = stack_hidden_dropout_rate
         assert(len(self.stack_hidden_dropout_rate) <= self.n_hidden_layers), "Invalid hidden dropout rate"        
@@ -639,12 +648,14 @@ class StackBuilder:
             is_preceding_unit = hidden_layer < len(self.preceding_units)
             n_neurons = self.preceding_units[hidden_layer].n_neurons if is_preceding_unit else self.n_neurons_per_layer[hidden_layer - len(self.preceding_units)]
             noise_stddev = self.preceding_units[hidden_layer].noise_stddev if is_preceding_unit else self.noise_stddev[hidden_layer - len(self.preceding_units)]
-            dropout_rate = self.preceding_units[hidden_layer].dropout_rate if is_preceding_unit else self.dropout_rate[hidden_layer - len(self.preceding_units)]
+            input_dropout_rate = self.preceding_units[hidden_layer].input_dropout_rate if is_preceding_unit else self.unit_input_dropout_rate[hidden_layer - len(self.preceding_units)]
+            hidden_dropout_rate = self.preceding_units[hidden_layer].hidden_dropout_rate if is_preceding_unit else self.unit_hidden_dropout_rate[hidden_layer - len(self.preceding_units)]
             unit = UnitAutoencoder(unit_name,
                                    n_inputs,
                                    n_neurons,
                                    noise_stddev=noise_stddev,
-                                   dropout_rate=dropout_rate,
+                                   input_dropout_rate=input_dropout_rate,
+                                   hidden_dropout_rate=hidden_dropout_rate,
                                    hidden_activation = self.unit_hidden_activations,
                                    output_activation = self.unit_output_activations,
                                    n_observable_hidden_neurons = n_observable_hidden_neurons_per_layer,

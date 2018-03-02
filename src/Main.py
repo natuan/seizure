@@ -115,7 +115,11 @@ def build_and_train_units():
 ##
 ############################################################################################
 def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
-                           preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[], dropout_rate=[]):
+                           preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[],
+                           unit_input_dropout_rate=[],
+                           unit_hidden_dropout_rate=[],
+                           stack_input_dropout_rate=0,
+                           stack_hidden_dropout_rate=[]):
     # Stack configuration
     cache_dir = os.path.join(root_dir, name)
     if not os.path.exists(cache_dir):
@@ -130,12 +134,13 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                  preceding_unit_model_paths= preceding_unit_model_paths,
                                  n_neurons_per_layer=n_neurons_per_layer,
                                  noise_stddev=noise_stddev,
-                                 dropout_rate=dropout_rate,
+                                 unit_input_dropout_rate=unit_input_dropout_rate,
+                                 unit_hidden_dropout_rate=unit_hidden_dropout_rate,
                                  cache_dir=cache_dir,
                                  tf_log_dir=tf_log_dir)
 
     # Training configuration
-    n_epochs = 100000 #100000
+    n_epochs = 200000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = 5*n_batches 
@@ -169,7 +174,7 @@ def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid
     n_epochs = 200000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
-    checkpoint_steps = n_batches
+    checkpoint_steps = 5*n_batches
     seed = 0
     stack_builder.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack_builder.stack_model_path,
                             n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
@@ -221,21 +226,25 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_200_200_dropout_layers"
+    name = "stack_200_dropout_unit_stack"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [200, 200]
-    noise_stddev = [0.05] * len(n_neurons_per_layer)
-    dropout_rate = [None] * len(n_neurons_per_layer)
-    input_dropout_rate = 0.1
-    hidden_dropout_rate = [0.33, 0.33]
+    n_neurons_per_layer = [200]
+    noise_stddev = [None] * len(n_neurons_per_layer)
+    unit_input_dropout_rate = [0.33] * len(n_neurons_per_layer)
+    unit_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer)
+    stack_input_dropout_rate = 0.33 # for stack
+    stack_hidden_dropout_rate = [0.5] # for stack
     print("Start: Build pretrained stack...\n")
     stack_builder_1 = build_pretrained_stack(name,
                                              preceding_units=preceding_units,
                                              preceding_unit_model_paths=preceding_unit_model_paths,
                                              n_neurons_per_layer=n_neurons_per_layer,
                                              noise_stddev=noise_stddev,
-                                             dropout_rate=dropout_rate)
+                                             unit_input_dropout_rate=unit_input_dropout_rate,
+                                             unit_hidden_dropout_rate=unit_hidden_dropout_rate,
+                                             stack_input_dropout_rate=stack_input_dropout_rate,
+                                             stack_hidden_dropout_rate=stack_hidden_dropout_rate)
     print("End: Build pretrained stack 1\n")
     print("Start: Fine tuning the pretrained stack...\n")
     fine_tune_pretrained_stack(stack_builder_1, X_train, X_valid, y_train, y_valid)
