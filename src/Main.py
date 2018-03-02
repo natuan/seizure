@@ -135,13 +135,13 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                  tf_log_dir=tf_log_dir)
 
     # Training configuration
-    n_epochs = 10000 #100000
+    n_epochs = 100000 #100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
-    checkpoint_steps = n_batches 
+    checkpoint_steps = 5*n_batches 
     seed = 0
     n_observable_hidden_neurons_per_layer = 10
-    n_hidden_neurons_to_plot = 1.0
+    n_hidden_neurons_to_plot = 0.5
     n_reconstructed_examples_per_class_to_plot = 50
 
     stack_builder.build_pretrained_stack(X_train_scaled,
@@ -166,7 +166,7 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
     return stack_builder
 
 def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid):
-    n_epochs = 10000
+    n_epochs = 200000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = n_batches
@@ -221,12 +221,14 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_50"
+    name = "stack_200_200_dropout_layers"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [50]
+    n_neurons_per_layer = [200, 200]
     noise_stddev = [0.05] * len(n_neurons_per_layer)
     dropout_rate = [None] * len(n_neurons_per_layer)
+    input_dropout_rate = 0.1
+    hidden_dropout_rate = [0.33, 0.33]
     print("Start: Build pretrained stack...\n")
     stack_builder_1 = build_pretrained_stack(name,
                                              preceding_units=preceding_units,
@@ -242,7 +244,7 @@ if __name__ == "__main__":
     accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
     print("Accuracy by stack 1: {}".format(accuracy))
 
-
+    """
     print("========== BUILDING STACK 2 ============\n")
     name = "stack_50_50"
     preceding_units, preceding_unit_model_paths = stack_builder_1.get_units_and_model_paths()
@@ -263,7 +265,7 @@ if __name__ == "__main__":
     accuracy = stack_2.restore_and_eval(model_path=stack_builder_2.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
     print("Accuracy by stack 2: {}".format(accuracy))
     """
-    
+
     """
     print("========== BUILDING STACK 3 ============\n")
     stack_3, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(3, 200, unit_model_paths = stack_2.unit_model_paths)

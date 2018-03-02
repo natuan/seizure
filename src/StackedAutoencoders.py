@@ -108,7 +108,10 @@ class UnitAutoencoder:
             
         # Dictionary of trainable parameters: key = variable name, values are their values (after training or
         # restored from a model)
-        self.params = None        
+        self.params = None
+
+        # Stop file: if this file exists, the training will stop
+        self.stop_file_path = os.path.join(tf_log_dir, "stop")
         
     def _variable_summaries(self, var, tag):
       """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
@@ -146,6 +149,7 @@ class UnitAutoencoder:
             self.init.run()
             best_loss_on_valid_set = 100000
             model_step = -1
+            stop = False
             for epoch in tqdm(range(n_epochs)):
                 X_train_indices = np.random.permutation(len(X_train))
                 n_batches = len(X_train) // batch_size
@@ -166,7 +170,13 @@ class UnitAutoencoder:
                         if model_to_save:
                             self.saver.save(sess, model_path)
                             model_step = step
+                        # Check if stop signal exists
+                        if os.path.exists(self.stop_file_path):
+                            stop = True
                     start_idx += batch_size
+                if stop:
+                    print("Stopping command detected: {}".format(self.stop_file_path))
+                    break
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
             self.valid_file_writer.close()
@@ -281,7 +291,8 @@ class StackedAutoencoders:
         self.loss_summary = None
         self.summary = None
         self.train_file_writer = None        
-
+        self.stop_file_path = os.path.join(cache_dir, "stop")
+      
     def _add_hidden_layer(self, input_tensor, unit, layer_name,
                           regularizer,
                           input_dropout_rate,
@@ -422,6 +433,7 @@ class StackedAutoencoders:
             self.init.run()
             best_loss_on_valid_set = 100000
             model_step = -1
+            stop = False
             for epoch in tqdm(range(n_epochs)):
                 X_train_indices = np.random.permutation(len(X_train))
                 n_batches = len(X_train) // batch_size
@@ -444,7 +456,12 @@ class StackedAutoencoders:
                         if model_to_save:
                             self.saver.save(sess, model_path)
                             model_step = step
+                        if os.path.exists(self.stop_file_path):
+                            stop = True
                     start_idx += batch_size
+                if stop:
+                    print("Stopping command detected: {}".format(self.stop_file_path))
+                    break                    
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
             self.valid_file_writer.close()
@@ -528,6 +545,8 @@ class StackBuilder:
                  n_neurons_per_layer = [],
                  noise_stddev = [],
                  dropout_rate = [],
+                 stack_input_dropout_rate = 0,
+                 stack_hidden_dropout_rate = [],
                  unit_hidden_activations = tf.nn.softmax, # of hidden layers
                  unit_output_activations = None,          # of hidden layers
                  output_activation = tf.nn.softmax, # of output layer
@@ -561,6 +580,9 @@ class StackBuilder:
             raise ValueError("Stack cannot be created empty")
         assert(len(self.noise_stddev) == len(self.n_neurons_per_layer)), "Invalid noise_stddev array"
         assert(len(self.dropout_rate) == len(self.n_neurons_per_layer)), "Invalid dropout rate array"
+        self.stack_input_dropout_rate = stack_input_dropout_rate
+        self.stack_hidden_dropout_rate = stack_hidden_dropout_rate
+        assert(len(self.stack_hidden_dropout_rate) <= self.n_hidden_layers), "Invalid hidden dropout rate"        
         self.unit_model_paths = [None] * self.n_hidden_layers
         self.units = [None] * self.n_hidden_layers
         self.unit_hidden_activations = unit_hidden_activations
@@ -673,7 +695,11 @@ class StackBuilder:
         if (not ordinary_stack):
             stack_hidden_layer_names = ["{}_hidden_{}".format(self.name, str(idx)) for idx in range(len(self.units))]
             for idx, unit in enumerate(self.units):
-                self.stack.stack_encoder(unit, stack_hidden_layer_names[idx])
+                stack_input_dropout_rate = self.stack_input_dropout_rate if idx == 0 else 0
+                stack_hidden_dropout_rate = self.stack_hidden_dropout_rate[idx] if idx < len(self.stack_hidden_dropout_rate) else 0
+                self.stack.stack_encoder(unit, stack_hidden_layer_names[idx],
+                                         input_dropout_rate=stack_input_dropout_rate,
+                                         hidden_dropout_rate=stack_hidden_dropout_rate)
             self.stack.stack_softmax_output_layer(layer_name="{}_softmax_outputs".format(self.name),
                                                   kernel_regularizer=self.output_kernel_regularizer,
                                                   kernel_initializer=self.output_kernel_initializer,
