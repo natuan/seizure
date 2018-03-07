@@ -116,6 +116,7 @@ def build_and_train_units():
 ############################################################################################
 def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                            preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[],
+                           unit_hidden_activations = tf.nn.elu,
                            unit_input_dropout_rate=[],
                            unit_hidden_dropout_rate=[],
                            stack_input_dropout_rate=0,
@@ -134,13 +135,14 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                  preceding_unit_model_paths= preceding_unit_model_paths,
                                  n_neurons_per_layer=n_neurons_per_layer,
                                  noise_stddev=noise_stddev,
+                                 unit_hidden_activations=unit_hidden_activations,       # ELU
                                  unit_input_dropout_rate=unit_input_dropout_rate,
                                  unit_hidden_dropout_rate=unit_hidden_dropout_rate,
                                  cache_dir=cache_dir,
                                  tf_log_dir=tf_log_dir)
 
     # Training configuration
-    n_epochs = 200000
+    n_epochs = 50000 #100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = 5*n_batches 
@@ -171,14 +173,18 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
     return stack_builder
 
 def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid):
-    n_epochs = 200000
+    n_epochs = 50000 #100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = 5*n_batches
     seed = 0
-    stack_builder.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack_builder.stack_model_path,
-                            n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
+    print("Fine tuning...\n")
+    model_step, all_steps = stack_builder.stack.fit(X_train, X_valid, y_train, y_valid,model_path=stack_builder.stack_model_path,
+                                                    n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
+    print(">> Done\n")
+    print(">> Best model saved at step {} out of {} total steps\n".format(model_step, all_steps))
 
+    
 ############################################################################################
 ##
 ## Utils
@@ -226,11 +232,12 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_200_dropout_unit_stack"
+    name = "stack_200_200_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [200]
+    n_neurons_per_layer = [200, 200]
     noise_stddev = [None] * len(n_neurons_per_layer)
+    unit_hidden_activations = tf.nn.elu
     unit_input_dropout_rate = [0.33] * len(n_neurons_per_layer)
     unit_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer)
     stack_input_dropout_rate = 0.33 # for stack
@@ -241,17 +248,34 @@ if __name__ == "__main__":
                                              preceding_unit_model_paths=preceding_unit_model_paths,
                                              n_neurons_per_layer=n_neurons_per_layer,
                                              noise_stddev=noise_stddev,
+                                             unit_hidden_activations = tf.nn.elu,
                                              unit_input_dropout_rate=unit_input_dropout_rate,
                                              unit_hidden_dropout_rate=unit_hidden_dropout_rate,
                                              stack_input_dropout_rate=stack_input_dropout_rate,
                                              stack_hidden_dropout_rate=stack_hidden_dropout_rate)
     print("End: Build pretrained stack 1\n")
+    
     print("Start: Fine tuning the pretrained stack...\n")
     fine_tune_pretrained_stack(stack_builder_1, X_train, X_valid, y_train, y_valid)
-    print("End: Fine tuning the pretrained stack 1\n")
+    print("End: Fine tuning the pretrained stack 1\n")   
     stack_1 = stack_builder_1.get_stack()
-    accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
-    print("Accuracy by stack 1: {}".format(accuracy))
+    
+    print("Start: Checking stack weights before learning...")
+    stack_initial_params = stack_1.initial_params
+    for k in stack_initial_params.keys():
+        for idx, unit in enumerate(stack_builder_1.units):
+            if np.array_equal(stack_initial_params[k], unit.hidden_weights()):
+                print(">> Values at key {} == hidden weights of unit {}\n".format(k, idx))
+            elif np.array_equal(stack_initial_params[k], unit.hidden_biases()):
+                print(">> Values at key {} == biases of unit {}\n".format(k, idx))
+    print("End: Checking stack weights before learning\n")
+    
+    train_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_train, y=y_train, varlist = ["accuracy"])
+    print("Train accuracy by stack 1: {}".format(train_accuracy))
+    valid_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_valid, y=y_valid, varlist = ["accuracy"])
+    print("Valid accuracy by stack 1: {}".format(valid_accuracy))
+    test_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
+    print("Test accuracy by stack 1: {}".format(test_accuracy))
 
     """
     print("========== BUILDING STACK 2 ============\n")

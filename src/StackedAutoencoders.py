@@ -28,7 +28,7 @@ class UnitAutoencoder:
                  output_activation = None,
                  n_observable_hidden_neurons = 0,
                  regularizer = tf.contrib.layers.l2_regularizer(0.01),
-                 initializer = tf.contrib.layers.variance_scaling_initializer(),
+                 initializer = tf.contrib.layers.variance_scaling_initializer(), # He initialization
                  optimizer = tf.train.AdamOptimizer(0.001),
                  tf_log_dir = "../tf_logs"):
         """
@@ -116,6 +116,9 @@ class UnitAutoencoder:
         # restored from a model)
         self.params = None
 
+        # The trainable params with initial values (before traininig or restoration)
+        self.initial_params = None
+
         # Stop file: if this file exists, the training will stop
         self.stop_file_path = os.path.join(tf_log_dir, "stop")
         
@@ -129,7 +132,7 @@ class UnitAutoencoder:
         tf.summary.scalar('stddev', stddev)
         tf.summary.scalar('max', tf.reduce_max(var))
         tf.summary.scalar('min', tf.reduce_min(var))
-        tf.summary.histogram('histogram', var)
+        tf.summary.histogram('histogram', var)    
         
     def fit(self, X_train, X_valid, n_epochs, model_path, save_best_only = True, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         """
@@ -153,6 +156,7 @@ class UnitAutoencoder:
                 batch_size = len(X_train)
             tf.set_random_seed(seed)
             self.init.run()
+            self.initial_params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             best_loss_on_valid_set = 100000
             model_step = -1
             stop = False
@@ -190,13 +194,25 @@ class UnitAutoencoder:
             all_steps = n_epochs * n_batches
             return model_step, all_steps
         
-    def hidden_weights(self):
+    def hidden_weights(self, file_path = None):
         assert(self.params is not None), "Invalid self.params"
-        return self.params["{}_hidden/kernel:0".format(self.name)]
+        w = self.params["{}_hidden/kernel:0".format(self.name)]
+        if file_path is not None:
+            W = np.array(w)
+            columns = ["neuron_{}".format(idx) for idx in range(W.shape[1])]
+            df = pd.DataFrame(data=W, columns=columns)
+            df.to_csv(file_path)
+        return w
 
-    def hidden_biases(self):
+    def hidden_biases(self, file_path = None):
         assert(self.params is not None), "Invalid self.params"
-        return self.params["{}_hidden/bias:0".format(self.name)]
+        w = self.params["{}_hidden/bias:0".format(self.name)]
+        if file_path is not None:
+            W = np.array(w)
+            columns = ["neuron_{}".format(idx) for idx in range(W.shape[1])]
+            df = pd.DataFrame(data=W, columns=columns)
+            df.to_csv(file_path)
+        return w
     
     def output_weights(self):
         assert(self.params is not None), "Invalid self.params"
@@ -281,6 +297,7 @@ class StackedAutoencoders:
         self.name = name
         self.stacked_units = []
         self.graph = None
+        self.initial_params = None
         self.params = None
         self.cache_dir = cache_dir
         self.tf_log_dir = tf_log_dir
@@ -357,6 +374,7 @@ class StackedAutoencoders:
                                                       regularizer, input_dropout_rate, hidden_dropout_rate)
             self.hidden += [hidden]
             self.encoders += [hidden]
+            self.stacked_units += [unit]
             if reg_loss is not None:
                 self.loss = tf.add_n([self.loss, reg_loss]) if self.loss is not None else reg_loss
 
@@ -437,6 +455,7 @@ class StackedAutoencoders:
                 batch_size = len(X_train)
             tf.set_random_seed(seed)
             self.init.run()
+            self.initial_params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             best_loss_on_valid_set = 100000
             model_step = -1
             stop = False
@@ -467,7 +486,7 @@ class StackedAutoencoders:
                     start_idx += batch_size
                 if stop:
                     print("Stopping command detected: {}".format(self.stop_file_path))
-                    break                    
+                    break
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             self.train_file_writer.close()
             self.valid_file_writer.close()
@@ -675,6 +694,7 @@ class StackBuilder:
                                                  checkpoint_steps=checkpoint_steps,
                                                  seed=seed)
                 print(">> Done\n")
+                print(">> Best model saved at step {} out of {} total steps\n".format(model_step, all_steps))
                 print("Plotting reconstructed outputs of unit at hidden layer {}...\n".format(hidden_layer))
                 unit_plot_dir = os.path.join(unit_cache_dir, "plots")
                 [X_recon] = unit.restore_and_eval(X_train_current, unit_model_path, ["outputs"])
@@ -737,17 +757,7 @@ class StackBuilder:
         df.sort_index(inplace=True)
         df.to_csv(result_file_path)
         print(">> Done\n")
-        
-    def fine_tune_pretrained_stack(self, X_train, X_valid, y_train, y_valid,
-                                   n_epochs,
-                                   batch_size,
-                                   checkpoint_steps,
-                                   seed):
-        assert(self.stack), "Empty stack"
-        assert(self.stack_model_path and os.path.exists("{}.meta".format(self.stack_model_path))), "self.stack_model_path is expected"
-        self.stack.fit(X_train, X_valid, y_train, y_valid, model_path=stack.stack_model_path,
-                       n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
-        
+                
     
 ##################################################################################
 ##
