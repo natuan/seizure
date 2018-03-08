@@ -50,7 +50,7 @@ y_test = y_test[X_test_class_E_indices]
 
 # Scaling the train, valid and test sets
 signal_range = (np.amin(X_train), np.amax(X_train))
-scaling_range = (0, 1)
+scaling_range = (-1, 1)
 X_train_scaled = min_max_scale(X_train, signal_range, scaling_range)
 X_valid_scaled = min_max_scale(X_valid, signal_range, scaling_range)
 X_test_scaled = min_max_scale(X_test, signal_range, scaling_range)
@@ -232,10 +232,10 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_200_200_dropout_elu"
+    name = "stack_10_10_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [200, 200]
+    n_neurons_per_layer = [10, 10]
     noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
     unit_input_dropout_rate = [0.33] * len(n_neurons_per_layer)
