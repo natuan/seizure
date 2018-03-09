@@ -115,10 +115,13 @@ def build_and_train_units():
 ##
 ############################################################################################
 def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
-                           preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[], noise_stddev=[],
+                           preceding_units=[], preceding_unit_model_paths=[], n_neurons_per_layer=[],
+                           unit_regularizer=[],
+                           unit_noise_stddev=[],
                            unit_hidden_activations = tf.nn.elu,
                            unit_input_dropout_rate=[],
                            unit_hidden_dropout_rate=[],
+                           stack_regularizer=[],
                            stack_input_dropout_rate=0,
                            stack_hidden_dropout_rate=[]):
     # Stack configuration
@@ -134,10 +137,14 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                  preceding_units=preceding_units,
                                  preceding_unit_model_paths= preceding_unit_model_paths,
                                  n_neurons_per_layer=n_neurons_per_layer,
-                                 noise_stddev=noise_stddev,
+                                 unit_regularizer=unit_regularizer,
+                                 unit_noise_stddev=unit_noise_stddev,
                                  unit_hidden_activations=unit_hidden_activations,       # ELU
                                  unit_input_dropout_rate=unit_input_dropout_rate,
                                  unit_hidden_dropout_rate=unit_hidden_dropout_rate,
+                                 stack_regularizer=stack_regularizer,
+                                 stack_input_dropout_rate=stack_input_dropout_rate,
+                                 stack_hidden_dropout_rate=stack_hidden_dropout_rate,
                                  cache_dir=cache_dir,
                                  tf_log_dir=tf_log_dir)
 
@@ -176,7 +183,7 @@ def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid
     n_epochs = 50000 #100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
-    checkpoint_steps = 5*n_batches
+    checkpoint_steps = 5 * n_batches
     seed = 0
     print("Fine tuning...\n")
     model_step, all_steps = stack_builder.stack.fit(X_train, X_valid, y_train, y_valid,model_path=stack_builder.stack_model_path,
@@ -232,25 +239,29 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_10_10_dropout_elu"
+    name = "stack_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [10, 10]
-    noise_stddev = [None] * len(n_neurons_per_layer)
+    n_neurons_per_layer = [50, 50]
+    unit_regularizer = [None] * len(n_neurons_per_layer)
+    unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
     unit_input_dropout_rate = [0.33] * len(n_neurons_per_layer)
     unit_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer)
+    stack_regularizer = None
     stack_input_dropout_rate = 0.33 # for stack
-    stack_hidden_dropout_rate = [0.5] # for stack
+    stack_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer) # for stack
     print("Start: Build pretrained stack...\n")
     stack_builder_1 = build_pretrained_stack(name,
                                              preceding_units=preceding_units,
                                              preceding_unit_model_paths=preceding_unit_model_paths,
                                              n_neurons_per_layer=n_neurons_per_layer,
-                                             noise_stddev=noise_stddev,
+                                             unit_regularizer=unit_regularizer,
+                                             unit_noise_stddev=unit_noise_stddev,
                                              unit_hidden_activations = tf.nn.elu,
                                              unit_input_dropout_rate=unit_input_dropout_rate,
                                              unit_hidden_dropout_rate=unit_hidden_dropout_rate,
+                                             stack_regularizer=stack_regularizer,
                                              stack_input_dropout_rate=stack_input_dropout_rate,
                                              stack_hidden_dropout_rate=stack_hidden_dropout_rate)
     print("End: Build pretrained stack 1\n")

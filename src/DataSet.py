@@ -232,4 +232,4 @@ def create_binary_data_set_class_E():
                            "D": 0,
                            "E": 1}
     data_set.create_segment_data()
-    data_set.split(test_ratio=0.15, random_state=42)
+    data_set.split(test_ratio=0.2, random_state=50)
