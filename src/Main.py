@@ -24,29 +24,11 @@ data_set = DataSet(input_dir=os.path.join(root_dir, "input"),
                    cache_dir=os.path.join(root_dir, "cache"))
 
 # Load train, validation and test sets
-ratio = 0.15
+ratio = 0.2
 
-X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_TRAIN.csv".format(ratio)))
-X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_VALID.csv".format(ratio)))
-X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand0_TEST.csv".format(ratio)))
-
-"""
-X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@ABCD@E@_ratio{}_rand42_TRAIN.csv".format(ratio)))
-X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@ABCD@E@_ratio{}_rand42_VALID.csv".format(ratio)))
-X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@ABCD@E@_ratio{}_rand42_TEST.csv".format(ratio)))
-
-X_train_class_E_indices = [idx for idx, val in enumerate(y_train) if val == 1]
-X_train = X_train[X_train_class_E_indices]
-y_train = y_train[X_train_class_E_indices]
-
-X_valid_class_E_indices = [idx for idx, val in enumerate(y_valid) if val == 1]
-X_valid = X_valid[X_valid_class_E_indices]
-y_valid = y_valid[X_valid_class_E_indices]
-
-X_test_class_E_indices = [idx for idx, val in enumerate(y_test) if val == 1]
-X_test = X_test[X_test_class_E_indices]
-y_test = y_test[X_test_class_E_indices]
-"""
+X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TRAIN.csv".format(ratio)))
+X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_VALID.csv".format(ratio)))
+X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TEST.csv".format(ratio)))
 
 # Scaling the train, valid and test sets
 signal_range = (np.amin(X_train), np.amax(X_train))
@@ -149,12 +131,12 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                  tf_log_dir=tf_log_dir)
 
     # Training configuration
-    n_epochs = 50000 #100000
+    n_epochs = 100000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = 5*n_batches 
     seed = 0
-    n_observable_hidden_neurons_per_layer = 10
+    n_observable_hidden_neurons_per_layer = 50
     n_hidden_neurons_to_plot = 0.5
     n_reconstructed_examples_per_class_to_plot = 50
 
@@ -180,7 +162,7 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
     return stack_builder
 
 def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid):
-    n_epochs = 50000 #100000
+    n_epochs = 300000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
     checkpoint_steps = 5 * n_batches

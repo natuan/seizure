@@ -233,3 +233,15 @@ def create_binary_data_set_class_E():
                            "E": 1}
     data_set.create_segment_data()
     data_set.split(test_ratio=0.2, random_state=50)
+
+def create_data_set_class_AB_CD_E():
+    root_dir = "/home/natuan/MyHDD/ml_nano_capstone/"
+    data_set = DataSet(input_dir=os.path.join(root_dir, "input"),
+                       cache_dir=os.path.join(root_dir, "cache"))
+    data_set.target_map = {"A": 0,
+                           "B": 0,
+                           "C": 1,
+                           "D": 1,
+                           "E": 2}
+    data_set.create_segment_data()
+    data_set.split(test_ratio=0.2, random_state=25)
