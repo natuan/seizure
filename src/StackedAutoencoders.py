@@ -322,7 +322,7 @@ class StackedAutoencoders:
                           hidden_dropout_rate):
         assert(unit.params), "Invalid unit.params"
         with tf.name_scope(layer_name):
-            input_drop = tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
+            input_drop = input_tensor if input_dropout_rate is None else tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
             weights = tf.Variable(unit.hidden_weights(), name = "weights")
             assert(weights.shape == (unit.n_inputs, unit.n_neurons)), "Wrong assumption about weight's shape"
             biases = tf.Variable(unit.hidden_biases(), name = "biases")
@@ -332,7 +332,7 @@ class StackedAutoencoders:
                 hidden_outputs = unit.hidden_activation(pre_activations, name = "hidden_outputs")
             else:
                 hidden_outputs = pre_activations
-            hidden_drop = tf.layers.dropout(hidden_outputs, rate=hidden_dropout_rate, training=self.training)
+            hidden_drop = hidden_outputs if hidden_dropout_rate is None else tf.layers.dropout(hidden_outputs, rate=hidden_dropout_rate, training=self.training)
             reg_loss = regularizer(weights) if regularizer else None
             return hidden_drop, reg_loss
 
@@ -342,7 +342,7 @@ class StackedAutoencoders:
                           output_dropout_rate):
         assert(unit.params), "Invalid unit.params"
         with tf.name_scope(layer_name):
-            input_drop = tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
+            input_drop = input_tensor if input_dropout_rate is None else tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
             weights = tf.Variable(unit.output_weights(), name = "weights")
             assert(weights.shape == (unit.n_inputs, unit.n_neurons)), "Wrong assumption about weight's shape"
             biases = tf.Variable(unit.output_biases(), name = "biases")
@@ -352,7 +352,7 @@ class StackedAutoencoders:
                 outputs = unit.output_activation(pre_activations, name = "hidden_outputs")
             else:
                 outputs = pre_activations
-            outputs_drop = tf.layers.dropout(outputs, rate=output_dropout_rate, training=self.training)
+            outputs_drop = outputs if output_dropout_rate is None else tf.layers.dropout(outputs, rate=output_dropout_rate, training=self.training)
             reg_loss = regularizer(weights) if regularizer else None
             return outputs_drop, reg_loss
         
