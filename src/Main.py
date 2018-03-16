@@ -105,7 +105,8 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                            unit_hidden_dropout_rate=[],
                            stack_regularizer=[],
                            stack_input_dropout_rate=0,
-                           stack_hidden_dropout_rate=[]):
+                           stack_hidden_dropout_rate=[],
+                           pretrained_weight_initialization=True):
     # Stack configuration
     cache_dir = os.path.join(root_dir, name)
     if not os.path.exists(cache_dir):
@@ -150,7 +151,8 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                          n_epochs=n_epochs,
                                          batch_size=batch_size,
                                          checkpoint_steps=checkpoint_steps,
-                                         seed=seed)
+                                         seed=seed,
+                                         pretrained_weight_initialization=pretrained_weight_initialization)
     for hidden_layer in range(stack_builder.n_hidden_layers):
         train_file_path = os.path.join(cache_dir, "train_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
         valid_file_path = os.path.join(cache_dir, "valid_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
@@ -221,18 +223,19 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_50_50_dropout_elu_clean_input"
+    name = "stack_50_50_dropout_elu_no_pretrained_initialization"
     preceding_units=[]
     preceding_unit_model_paths = []
     n_neurons_per_layer = [50, 50]
     unit_regularizer = [None] * len(n_neurons_per_layer)
     unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
-    unit_input_dropout_rate = [None] * len(n_neurons_per_layer)
+    unit_input_dropout_rate = [0.33] * len(n_neurons_per_layer)
     unit_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer)
     stack_regularizer = None
-    stack_input_dropout_rate = None # for stack
+    stack_input_dropout_rate = 0.33 # for stack
     stack_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer) # for stack
+    pretrained_weight_initialization = False
     print("Start: Build pretrained stack...\n")
     stack_builder_1 = build_pretrained_stack(name,
                                              preceding_units=preceding_units,
@@ -245,7 +248,8 @@ if __name__ == "__main__":
                                              unit_hidden_dropout_rate=unit_hidden_dropout_rate,
                                              stack_regularizer=stack_regularizer,
                                              stack_input_dropout_rate=stack_input_dropout_rate,
-                                             stack_hidden_dropout_rate=stack_hidden_dropout_rate)
+                                             stack_hidden_dropout_rate=stack_hidden_dropout_rate,
+                                             pretrained_weight_initialization=pretrained_weight_initialization)
     print("End: Build pretrained stack 1\n")
     
     print("Start: Fine tuning the pretrained stack...\n")

@@ -133,6 +133,13 @@ class UnitAutoencoder:
         tf.summary.scalar('max', tf.reduce_max(var))
         tf.summary.scalar('min', tf.reduce_min(var))
         tf.summary.histogram('histogram', var)    
+
+    def save_untrained_model(self, model_path, seed = 42):
+        with tf.Session(graph=self.graph) as sess:
+            tf.set_random_seed(seed)
+            self.init.run()
+            self.initial_params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
+            self.saver.save(sess, model_path)
         
     def fit(self, X_train, X_valid, n_epochs, model_path, save_best_only = True, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         """
@@ -654,6 +661,7 @@ class StackBuilder:
                                n_epochs = 10000,
                                batch_size = 64,
                                checkpoint_steps = 1000,
+                               pretrained_weight_initialization = True,
                                seed = 42):
         assert(X_train.shape[1] == X_valid.shape[1]), "Invalid input shapes"
         units = []
@@ -691,16 +699,22 @@ class StackBuilder:
             # Try to reuse trained model if specified
             unit_model_path = self.preceding_unit_model_paths[hidden_layer] if hidden_layer < len(self.preceding_units) else os.path.join(unit_cache_dir, "{}.model".format(unit_name))
             if not os.path.exists("{}.meta".format(unit_model_path)):
-                print("Training {} for hidden layer {}...\n".format(unit_name, hidden_layer))
-                model_step, all_steps = unit.fit(X_train_current,
-                                                 X_valid_current,
-                                                 n_epochs=n_epochs,
-                                                 model_path=unit_model_path,
-                                                 batch_size=batch_size,
-                                                 checkpoint_steps=checkpoint_steps,
-                                                 seed=seed)
-                print(">> Done\n")
-                print(">> Best model saved at step {} out of {} total steps\n".format(model_step, all_steps))
+                if pretrained_weight_initialization:
+                    print("Training {} for hidden layer {}...\n".format(unit_name, hidden_layer))
+                    model_step, all_steps = unit.fit(X_train_current,
+                                                     X_valid_current,
+                                                     n_epochs=n_epochs,
+                                                     model_path=unit_model_path,
+                                                     batch_size=batch_size,
+                                                     checkpoint_steps=checkpoint_steps,
+                                                     seed=seed)
+                    print(">> Done\n")
+                    print(">> Best model saved at step {} out of {} total steps\n".format(model_step, all_steps))
+                else:
+                    print("Randomly initialized weights and save model to {}...\n".format(unit_model_path))
+                    unit.save_untrained_model(model_path=unit_model_path, seed=seed)
+                    model_step, all_steps = (0, 0)
+                    print(">> Done\n")
                 print("Plotting reconstructed outputs of unit at hidden layer {}...\n".format(hidden_layer))
                 unit_plot_dir = os.path.join(unit_cache_dir, "plots")
                 [X_recon] = unit.restore_and_eval(X_train_current, unit_model_path, ["outputs"])
@@ -713,7 +727,7 @@ class StackBuilder:
                 hidden_weights = unit.hidden_weights()
                 unit_hidden_weights_dir = os.path.join(unit_plot_dir, "hidden_weights")
                 plot_hidden_weights(hidden_weights, n_hidden_neurons_to_plot, unit_hidden_weights_dir, seed =seed+20)
-                print(">> Done\n")                
+                print(">> Done\n")
             else:
                 print("Reloading model {} of {} for hidden layer {}...\n".format(unit_model_path, unit_name, hidden_layer))
                 unit.restore(unit_model_path)
