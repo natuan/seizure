@@ -451,7 +451,17 @@ class StackedAutoencoders:
         with tf.Session(graph=self.graph) as sess:
             self.init.run()
             self.saver.save(sess, model_path)
-        
+
+    def restore(self, model_path):
+        """
+        Restore model's params
+        """
+        assert(self.graph), "Invalid graph"
+        with tf.Session(graph=self.graph) as sess:
+            self.saver.restore(sess, model_path)
+            self.initial_params = {}
+            self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
+            
     def fit(self, X_train, X_valid, y_train, y_valid, model_path, save_best_only = True, n_epochs = 1000, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
         assert(self.training_op is not None), "Invalid self.training_op"
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
@@ -662,6 +672,7 @@ class StackBuilder:
                                batch_size = 64,
                                checkpoint_steps = 1000,
                                pretrained_weight_initialization = True,
+                               restore_stack_model = True,
                                seed = 42):
         assert(X_train.shape[1] == X_valid.shape[1]), "Invalid input shapes"
         units = []
@@ -768,9 +779,16 @@ class StackBuilder:
                 self.stack.stack_decoder(unit, stack_decoder_layer_names[idx], is_reconstruction_layer=is_reconstruction_layer)
         self.stack.finalize(optimizer=tf.train.AdamOptimizer(self.adam_lr))
         print(">> Done\n")
-        print("Saving stack model to {}...\n".format(self.stack_model_path))
-        self.stack.save(self.stack_model_path)
-        print(">> Done\n")
+        if (not restore_stack_model):
+            print("Saving stack model to {}...\n".format(self.stack_model_path))
+            self.stack.save(self.stack_model_path)
+            print(">> Done\n")
+        else:
+            assert(os.path.exists("{}.meta".format(self.stack_model_path))), "Stack model path not found"
+            print("Restoring stack model from {}...\n".format(self.stack_model_path))
+            self.stack.restore(self.stack_model_path)
+            print(">> Done\n")
+            
         result_file_path = os.path.join(self.stack_cache_dir, "hidden_layer_units.csv")
         print("Saving results of building hidden layer units to {}...\n".format(result_file_path))
         columns = ["train_reconstruction_loss", "valid_reconstruction_loss", "step_of_best_model", "all_steps", "unit_model_path"]

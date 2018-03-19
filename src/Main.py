@@ -223,7 +223,7 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_50_50_dropout_elu_no_pretrained_initialization"
+    name = "stack_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
     n_neurons_per_layer = [50, 50]
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     stack_regularizer = None
     stack_input_dropout_rate = 0.33 # for stack
     stack_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer) # for stack
-    pretrained_weight_initialization = False
+    pretrained_weight_initialization = True
     print("Start: Build pretrained stack...\n")
     stack_builder_1 = build_pretrained_stack(name,
                                              preceding_units=preceding_units,
@@ -265,8 +265,8 @@ if __name__ == "__main__":
                 print(">> Values at key {} == hidden weights of unit {}\n".format(k, idx))
             elif np.array_equal(stack_initial_params[k], unit.hidden_biases()):
                 print(">> Values at key {} == biases of unit {}\n".format(k, idx))
-    print("End: Checking stack weights before learning\n")
-    
+    print("End: Checking stack weights before learning\n")    
+        
     train_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_train, y=y_train, varlist = ["accuracy"])
     print("Train accuracy by stack 1: {}".format(train_accuracy))
     valid_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_valid, y=y_valid, varlist = ["accuracy"])
