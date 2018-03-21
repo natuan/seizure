@@ -225,14 +225,14 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_50_50_noise0.1_elu"
+    name = "stack_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
     n_neurons_per_layer = [50, 50]
     unit_regularizer = [None] * len(n_neurons_per_layer)
-    unit_noise_stddev = [0.1] * len(n_neurons_per_layer)
+    unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
-    unit_input_dropout_rate = [None] * len(n_neurons_per_layer)
+    unit_input_dropout_rate = [0.33] * len(n_neurons_per_layer)
     unit_hidden_dropout_rate = [0.5] * len(n_neurons_per_layer)
     stack_regularizer = None
     stack_input_dropout_rate = 0.33 # for stack

@@ -234,7 +234,7 @@ For the same set of neurons, Figure~\ref{fig:weights_stack_50_50_dropout_elu} sh
 \label{fig:weights_stack_50_50_dropout_elu}
 \end{figure}
 
-\textit{Comparision on networks of 75-neuron layers}: Table~\ref{tab:Accuracy_B1_vs_B2} shows the accuracy performances of networks $B_1$ and $B_2$ with 2 layers fully connected networks, each having 75 neurons. They differed in exactly the same way $B_0$ and $A_1$ were distinguished: $B_1$ reconstructed the original signals from clean inputs, whereas $B_2$ did that from the corrupted inputs.
+\textit{Comparision on networks of 75-neuron layers}: Table~\ref{tab:Accuracy_B1_vs_B2} shows the accuracy performances of networks $B_1$ and $B_2$ with 2 layers fully connected networks, each having 75 neurons. They differed in exactly the same way $B_0$ and $A_1$ were distinguished: $B_1$ reconstructed the original signals from clean inputs, whereas $B_2$ did that from the corrupted inputs. We can again observe from the accuracy gaps that by reconstructing the inputs from their corrupted version, the denoising autoencoders extracted features that helped the network classifier learned a model that was more reliable in predicting the target classes.
 
 \begin{table}
 \begin{center}
@@ -249,14 +249,79 @@ $B_2$ & $94.28\%$ & $89.99\%$ & $90.69\%$\\ \hline
 \end{center}
 \end{table}
 
-
 \vspace{5mm}
 \noindent
 \textbf{C. Gaussian noisy inputs vs. dropout inputs:}
 
+\noindent
+I found that using Gaussian noises to corrupt the inputs of autoencoders seemed to work equally well compared to using the dropout technique. Figure~\ref{fig:stack_50_50_noise0.1_elu} shows the learning curves on the training and validation sets produced by a network, called $C_0$, that is similar to $A_1$ except for inputs being corrupted using Gaussian noises of 0.1 standard deviation (instead of dropout with rate $0.33$ used by $A_1$ and its autoencoders.) The best model by $C_0$ was saved at step $17,575,820$ of batch updates, after which the performance on the validation set started to decrease indicating that the model began to overfit to the training data. The accuracy performance of $C_0$, compared to $A_1$, is summarized in Table~\ref{tab:Accuracy_C0_vs_A1}.
+
+\begin{figure}
+  \includegraphics[width=\linewidth]{figures/stack_50_50_noise0.1_elu/learning_curves.eps}
+  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of a network, called $C_0$, that is similar to $A_1$ except for the inputs being corrupted using Gaussian noises instead of dropout.}
+  \label{fig:stack_50_50_noise0.1_elu}
+\end{figure}
+
+\begin{table}
+\begin{center}
+\begin{tabular}{|l||c|c|c|l|}
+\hline
+Network & Train set & Validation set & Test set\\ \hline \hline
+$C_0$ & $93.84\%$ & $90.43\%$ & $90.52\%$\\ \hline
+$A_1$ & $92.75\%$ & $89.04\%$ & $89.56\%$ \\ \hline
+\end{tabular}
+\caption{Accuracy by networks $C_0$ and $A_1$ representing the effects of using Gaussian noises and dropout to corrupt the inputs for learning representations.}
+\label{tab:Accuracy_C0_vs_A1}
+\end{center}
+\end{table}
+
 \vspace{5mm}
 \noindent
 \textbf{D. Denoising autoencoders with dropout: number of neurons and layers}
+
+\textit{Number of hidden neurons:} Table~\ref{tab:Accuracy_diff_num_neurons} shows the accuracy performance on the three sets of 2-hidden-layer networks with different number of hidden neurons. We can see that increasing the size of the hidden layers from $50$ to $75$ and to $100$ improved the accuracy up to $1\%$; unfortunately the performance gaps between training and validation/test sets also got wider, increasing the variances of the bigger networks. With $250$ hidden neurons (network $D_1$), the network achieved $99.42\%$ accuracy on the training set but did not improve much on the independent test set ($91.95\%$). As shown in Figure~\ref{fig:stack_250_250_dropout_elu}, this network overfitted to the training set at step $6,073,855$ of batch updates. For that many hidden neurons, perhaps a more agressive dropout would be needed to cope with overfitting.
+
+\begin{table}
+\begin{center}
+\begin{tabular}{|l||c|c|c|l|}
+\hline
+Network & \#Neurons/layer & Train set & Validation set & Test set\\ \hline \hline
+$A_1$ & $50$ & $92.75\%$ & $89.04\%$ & $89.56\%$\\ \hline
+$B_2$ & $75$ & $94.27\%$ & $89.99\%$ & $90.69\%$ \\ \hline
+$D_0$ & $100$ & $95.68\%$ & $90.56\%$ & $91.52\%$ \\ \hline
+$D_1$ & $250$ & $99.42\%$ & $90.95\%$ & $91.95\%$ \\ \hline
+\end{tabular}
+\caption{Accuracy by networks of two hidden layers with different number of neurons per layer.}
+\label{tab:Accuracy_diff_num_neurons}
+\end{center}
+\end{table}
+
+\begin{figure}
+  \includegraphics[width=\linewidth]{figures/stack_250_250_dropout_elu/learning_curves.eps}
+  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of 2-hidden-layer network $D_1$ which has $250$ hidden neurons per layer.}
+  \label{fig:stack_250_250_dropout_elu}
+\end{figure}
+
+\textit{Number of hidden layers:} As shown above for 2-hidden-layer networks, increasing number of hidden neurons could help with improving the accuracy performance (though not much unless more agressive ways were used to deal with overfitting). The number of hidden layers also determines the expressiveness of a neural network. With our small training set of about $6900$ examples, we might not need much deeper neural network. Figure~\ref{fig:stack_50_50_50} shows the learning curves by a 3-hidden-layer network with 50 hidden neurons per layer, and Table~\ref{tab:stack_50_50_50} shows the accuracy performance on the training, validation and testing sets of this network compared to its counterpart that has 2 hidden layers. We can observe that an extra hidden layer did not seem to help the network improve much of its accuracy performance.
+
+\begin{figure}
+  \includegraphics[width=\linewidth]{figures/stack_50_50_50_dropout_elu/learning_curves.eps}
+  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of a network, called $D_2$, that is similar to $A_1$ but has 3 hidden layers.}
+  \label{fig:stack_50_50_50}
+\end{figure}
+
+\begin{table}
+\begin{center}
+\begin{tabular}{|l||c|c|c|l|}
+\hline
+Network & \#Hidden layers & Train set & Validation set & Test set\\ \hline \hline
+$A_1$ & $2$ & $92.75\%$ & $89.04\%$ & $89.56\%$\\ \hline
+$D_2$ & $3$ & $92.98\%$ & $88.56\%$ & $89.69\%$\\ \hline
+\end{tabular}
+\caption{Accuracy by networks of two hidden layers with different number of neurons per layer.}
+\label{tab:stack_50_50_50}
+\end{center}
+\end{table}
 
 
 \section{Conclusion}
