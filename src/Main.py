@@ -225,10 +225,10 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_50_50_dropout_elu"
+    name = "stack_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [50, 50]
+    n_neurons_per_layer = [50]
     unit_regularizer = [None] * len(n_neurons_per_layer)
     unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
@@ -298,9 +298,4 @@ if __name__ == "__main__":
     stack_2 = stack_builder_2.get_stack()
     accuracy = stack_2.restore_and_eval(model_path=stack_builder_2.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
     print("Accuracy by stack 2: {}".format(accuracy))
-    """
-
-    """
-    print("========== BUILDING STACK 3 ============\n")
-    stack_3, X_train_codings, X_valid_codings, X_test_codings = build_and_train_stack(3, 200, unit_model_paths = stack_2.unit_model_paths)
     """

@@ -2,6 +2,7 @@ import os
 import math
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import StratifiedShuffleSplit
 
@@ -21,7 +22,7 @@ class DataSet:
         self.channel_length = 4097
         self.num_channels_per_set = 100
         self.data_set = self.read_channels_all_sets()
-
+        
         # Segment the original data into segments with the default settings
         self.num_segments_per_channel = 23
         self.target_map = {"A": 0,
@@ -89,6 +90,46 @@ class DataSet:
             channels_dict[s] = self.read_channels_in_set(s)
         return channels_dict
 
+    def _statistics(self, signal_array):
+        stats = [np.amin(signal_array), np.amax(signal_array), np.mean(signal_array), np.std(signal_array), np.percentile(signal_array, 25), np.percentile(signal_array, 50), np.percentile(signal_array, 75)]
+        return stats
+    
+    def statistics(self):
+        sets = ["A", "B", "C", "D", "E"]
+        stats = {}
+        all_signals = np.array([])
+        for s in sets:
+            signals = np.array([])
+            for _, signal_array in self.data_set[s].items():
+                signals = np.append(signals, signal_array)
+            all_signals = np.append(all_signals, signals)
+            stats[s] = self._statistics(signals)
+        stats["all"] = self._statistics(all_signals)
+        columns = ["min", "max", "mean", "std", "25percentile", "50percentile", "75percentile"]
+        df = pd.DataFrame.from_dict(stats, orient="index")
+        df.index.name = "class"
+        df.columns = columns
+        df.sort_index(inplace=True)
+        df.to_csv(os.path.join(self.cache_dir, "statistics.csv"))
+        return stats
+
+    def plot(self, plot_dir_path, segments_per_class = 10):
+        sets = ["A", "B", "C", "D", "E"]
+        for s in sets:
+            folder = os.path.join(plot_dir_path, s)
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            key_list = list(self.data_set[s].keys())
+            file_names = np.random.choice(key_list, segments_per_class) if segments_per_class is not None else key_list
+            for f in file_names:
+                signals = self.data_set[s][f]
+                fig = plt.figure()
+                plt.plot(signals)
+                fig_name = "{}.eps".format(str(f.upper()).replace(".TXT",""))
+                plot_file_path = os.path.join(folder, fig_name)
+                plt.savefig(plot_file_path)
+                plt.close()       
+        
     def _create_target_class_string(self):
         target_class_str = "@"
         for class_id in range(5):
@@ -245,3 +286,9 @@ def create_data_set_class_AB_CD_E():
                            "E": 2}
     data_set.create_segment_data()
     data_set.split(test_ratio=0.2, random_state=25)
+
+def plot_signals(segments_per_class = None):
+    root_dir = "/home/natuan/MyHDD/ml_nano_capstone/"
+    data_set = DataSet(input_dir=os.path.join(root_dir, "input"),
+                       cache_dir=os.path.join(root_dir, "cache"))
+    data_set.plot(os.path.join(data_set.cache_dir, "images"), segments_per_class=segments_per_class)
