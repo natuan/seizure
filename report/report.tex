@@ -8,6 +8,7 @@
 \usepackage{graphicx}
 \usepackage{subcaption}
 \usepackage{booktabs}
+\usepackage{hyperref,xcolor}
 
 \newcommand{\myvec}[1]{\mathbf{#1}}
 
@@ -31,7 +32,7 @@ This project aims to classify 1-second long EEG segments into one of the three c
 \item \textbf{Output:} a hypothesis $h$ classifying a sample of $M$ electrical voltage values into one of the volunteer classes $\{1, 2, 3\}$.
 \end{itemize}
 
-The formation of the training set $X$ and target $y$ is presented in more details in Section~\ref{sec:data_set}. This project explores the benefits of using autoencoders in learning a representation $f(\myvec{x}_i)$ of signal segments $\myvec{x}_i \in X$ that can be helpful for our classification task at hand; the two types of autoencoders considered in this work are traditional~\cite{bengio2007greedy} and denoising autoencoder~\cite{vincent2010stacked}. The extracted features are then tested with popular learning models (Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks) for classification (see Section~\ref{sec:solution}). %Several metrics are used to evaluate the classifiers, discussed in Section~\ref{sec:metric}.
+The formation of the training set $X$ and target $y$ is presented in more details in Section~\ref{sec:data_set}. This project explores the benefits of using autoencoders in learning a representation $f(\myvec{x}_i)$ of signal segments $\myvec{x}_i \in X$ that can be helpful for our classification task at hand; the two types of autoencoders considered in this work are traditional~\cite{bengio2007greedy} and denoising autoencoder~\cite{vincent2010stacked}. The trained parameters of these autoencoders are then used to fine tune multi-layer feed-forward neural network for classification (see Section~\ref{sec:solution}). %Several metrics are used to evaluate the classifiers, discussed in Section~\ref{sec:metric}.
 
 \subsection{Metrics}
 \label{sec:metric}
@@ -54,7 +55,7 @@ The data set used in this study is provided with the work by Andrzejak et al.~\c
 
 For each set of volunteers above, the data set contains 100 single-channel EEG segments of $4096$ signal micro-Voltage values in time domain of 23.6-sec duration. For this project each of these segments is divided into smaller segments of 1-second durations, which are considered stationary for EEG data~\cite{nigam2004neural}. These 1-second durations together define the training set $X$ of $178$ dimensions, and the three sets of volunteers $A + B$, $C + D$ and $E$ define the target vector $y$ in the problem statement above.
 
-Figure~\ref{fig:signals} shows four randomly chosen 23.6-second segments of each class from which we can only observe very slightly differences in patterns of the signals in each class. However, by looking at the shape of each class more closely it is interesting to notice some very distinguished segments that belong to epileptic seizure patients in both seizure-free or seizure-active periods (i.e., class C, D and E), as shown in Figure~\ref{fig:odd_signals}.
+Figure~\ref{fig:signals} shows four randomly chosen 23.6-second segments of each class from which we can only observe very slightly differences in patterns of the signals in each class. However, by looking at the shape of each class more closely it is interesting to notice some very distinguished segments that belong to epileptic seizure patients in both seizure-free or seizure-active periods (i.e., class C, D and E), as shown in Figure~\ref{fig:odd_signals}. We can observe that some signals that belong to patients during their seizure-active periods (i.e., class E) are very dense, whereas classes C and D contain some signals that are more sparse but also include several high peaks within one second.
 
 \begin{figure}
 \begin{subfigure}{.25\textwidth}
@@ -200,7 +201,7 @@ Figure~\ref{fig:signals} shows four randomly chosen 23.6-second segments of each
 \label{fig:odd_signals}
 \end{figure}
 
-Figure~\ref{fig:statistics} shows the chart of common statistics of signal values within each class, and the detailed numbers are shown in Table~\ref{tab:statistics}. The data points of class E, the category of patients in their seizure-active periods, have the smallest average value ($-4.74$) but spread the most among the classes with standard deviation $341.15$. 
+Figure~\ref{fig:statistics} shows the chart of common statistics of signal values within each class, and the detailed numbers are shown in Table~\ref{tab:statistics}. The data points of class E, the category of patients in their seizure-active periods, have the smallest average value ($-4.74$) but spread the most among the classes with standard deviation $341.15$ (more than the total standard deviation of all the other classes). The four classes A, B, C and D appear to have similar percentiles of $25\%$, $50\%$ and $75\%$; however, data points in class D appear to spread wider than those in the other three classes. The ranges of minimal and maximal values are perhaps the most visible distinction between the two sets $A \cup B$ and $C \cup D$.
 
 \begin{figure}
 \begin{subfigure}{.5\textwidth}
@@ -244,11 +245,9 @@ $E$ & -1885 & 2047 & -4.74 & 341.15 & -175 & -5 & 177 \\ \hline
 \subsection{Algorithms and Techniques}
 \label{sec:solution}
 
-This project aims to use a type of autoencoders (\cite{bengio2007greedy}, \cite{vincent2010stacked}, \cite{boureau2008sparse}, \cite{kingma2013auto}) that can learn to extract features of the training set $X$ for the purpose of classifying new sample of EEG segments. I propose to first try traditional stacked autoencoders~\cite{bengio2007greedy}; the other autoencoders will be explored depending on the performance of the first one on this data set.
-
 \subsubsection{Training autoencoders}
 \noindent
-An \textit{traditional autoencoder}~\cite{vincent2010stacked} is a fully connected feed-forward neural network which consists of an input layer, one hidden layer and an output layer such that the input and output layers have the same number of neurons. The computation performed by the hidden layer, specified by a weight matrix $\myvec{W}$, bias vector $\myvec{b}$ and nonlinear activation function $s$, acts as an \textit{encoder} that maps an input vector $\myvec{x}$ to a representation $f_{\theta}(\myvec{x})$ defined as follows:
+A \textit{traditional autoencoder} (\cite{bengio2007greedy}, \cite{vincent2010stacked}) is a fully connected feed-forward neural network which consists of an input layer, one hidden layer and an output layer such that the input and output layers have the same number of neurons. The computation performed by the hidden layer, specified by a weight matrix $\myvec{W}$, bias vector $\myvec{b}$ and nonlinear activation function $s$, acts as an \textit{encoder} that maps an input vector $\myvec{x}$ to a representation $f_{\theta}(\myvec{x})$ defined as follows:
 
 \[f_{\theta}(\myvec{x}) = s(\myvec{W}\myvec{x} + \myvec{b}).\]
 
@@ -259,66 +258,94 @@ The parameter set $\theta=(\myvec{W}, \myvec{b})$ is part of what to be adjusted
 \noindent
 where $g_{\theta'}$ can be either a linear or a non-linear function whose parameter $\theta'$ is the other part of what to be learned. With real-valued input signals $\myvec{x}$, the output $\myvec{z}$ in general is interpreted not as the exact reconstruction of $\myvec{x}$ but the mean of a distribution $P(\myvec{x}|\myvec{z})$. Squared error function between $\myvec{x}$ and $\myvec{z}$, and thus the objective function
 
-\[L(X) = \frac{1}{N}\sum_{i=1}^{N}(\myvec{x_i} - \myvec{z_i})^2\]
+\[L(X) = \frac{1}{N}\sum_{i=1}^{N}(\myvec{x_i} - \myvec{z_i})^2,\]
 \noindent
-is to be optimized during the training of the autoencoders.
+is to be optimized during the training of the autoencoders. As suggested in~\cite{vincent2010stacked}, affine mapping is to be used for this type of real-valued inputs and error function; in other words, $g_{\theta'}(\myvec{y}) = \myvec{W}' \myvec{y} + \myvec{b}'$ and $\theta'=(\myvec{W}', \myvec{b}')$.
 
-In order for autoencdoers not to produce trivial encoding and decoding functions (e.g., to avoid the identity function from input $x$ to itself), certain types of constraints need to be imposed. In traditional autoencoder, a constraint could be that the number of neurons of the hidden layer is smaller than the dimension of the inputs $x_i$'s. In so-called \textit{denoising autoencoders}~\cite{vincent2010stacked}, the inputs are made ``dirty'' before being fed into the encoder---by attempting to reconstruct the original input from its corrupted version, denoising autoencoders might learn representations that are more essential to the inputs. In this work, the input signals are made corrupted using one of the following two ways:
+In order for autoencoders not to produce trivial encoding and decoding functions (e.g., to avoid the identity function from input $\myvec{x}$ to itself), certain types of constraints need to be imposed. In traditional autoencoder, a constraint could be that the number of neurons of the hidden layer is smaller than the dimension of the inputs $\myvec{x}$. In so-called \textit{denoising autoencoders}~\cite{vincent2010stacked}, the inputs are made ``dirty'' before being fed into the encoder---by attempting to reconstruct the original input from its corrupted version, denoising autoencoders might learn representations that are more essential to the inputs. In this work, the input signals are made corrupted using one of the following two ways:
 \begin{itemize}
 \item Adding into the inputs random noises generated by a Gaussian distribution with zero mean and $\sigma$ standard deviation $N(0,\sigma^2)$.
 \item Disable a random number of neurons at the input layer of the autoencoders, which can be implemented using dropout techniques~\cite{srivastava2014dropout} with dropout rate denoted by $\rho$ ($0 < \rho < 1$).
 \end{itemize}
 
 \subsubsection{Stacking up autoencoders}
+\noindent
+The idea of reconstructing the inputs using autoencoders can be applied to map the orginal input into a highly non-linear representations. Specifically, the process starts by training the first autoencoder, defined by encoding and decoding functions $f^{(1)}_{\theta_1}$ and $g^{(1)}_{\theta'_1}$, to reconstruct input vector $\myvec{x}$. The representation of $\myvec{x}$ is then obtained by applying the learned encoding function to $\myvec{x}$, i.e. $f^{(1)}_{\theta_1}(\myvec{x})$. For each index $i \geq 1$, the representation $f^{(i)}_{\theta_i}(\myvec{x})$ produced from training the $i$th autoencoder becomes the input to the next $(i+1)$-th autoencoder, which is then trained to adjust its parameter $\theta_{i+1}$ and  $\theta'_{i+1}$ of the encoding and decoding functions $f^{(i+1)}_{\theta_{i+1}}$ and $g^{(i+1)}_{\theta'_{i+1}}$, respectively. From the resulting sequence of trained encoders $\langle f^{(1)}_{\theta_1}, f^{(2)}_{\theta_2}, ..., f^{(k)}_{\theta_k} \rangle$, the original input $\myvec{x}$ can then be mapped into the representation computed as $f^{(k)}_{\theta_k}(f^{(k-1)}_{\theta_{k-1}}(...(f^{(1)}_{\theta_1}(\myvec{x}))))$.
 
+More importantly, a multi-layer feed-forward neural network can be built based on the sequence of trained autoencoders for our classification task. The network consists of the following components:
+\begin{itemize}
+\item an input layer of $M$ neurons, where $M$ is the number of dimension of the input vectors, that accepts input signals $\myvec{x}_i \in X$;
+\item a sequence of $k$ hidden layers where the $i$th layer ($i \geq 1$) is the hidden layer of the $i$-th pretrained autoencoder, i.e. \textit{the weights and biases are initialized with the pretrained values};
+\item a softmax output layer with three neurons for the three target classes \textit{whose weights and biases are randomly initialized}.
+\end{itemize}
 
-
-The first (lowest) autoencoder on the stack is trained to minimize the difference, defined for instance as the mean squared error, between the input batches of EEG segments and their output activations. The output activation of the hidden layer becomes the input to the second autoencoder on the stack, which is trained also to minimize the difference between its input and output layers. This process of adding more autoencoders continues in that fashion. Finally, the output layer of the entire stack is the output of the first autoencoder. The stacked autoencoders is therefore symmetrical with regard to the middle hidden layer: the first lower half acts as the encoder while the second higher half of the stack as the decoder. The output activations of the middle layer thus act as encoded features of the training set of EEG segments.
-
-Depending on the performance of the above autoencoder in classifying the target classes of volunteers, I might also plan to train a stack of denoising autoencoders~\cite{vincent2010stacked} to extract features for the data set. At high level, this stack is much like the traditional one except for the Gaussian noises added into the input layer, forcing the decoder to learn more meaningful features, potentially improve the performance in classification.
-
-After the feature learning phase above, the output of the coding layer the network is considered the features representing the training set $X$. They are then used as input features of popular classification algorithms. This work considers the following classifiers: Decision Trees, K-Kearest Neighbors, Support Vector Machines and Feedforward Multi-layer Neural Networks. The hypothesis here is that the features learned automatically using autoencoders, together with one of these classifiers, provides comparable performance compared to the previous work (see Section~\ref{sec:benchmark}).
+The above network can be used in two ways. In the first approach, the weights and biases of all the hidden layers are freezed, and the parameters of the output layer are to be trained subject to the reconstruction error defined on the training set $X$; in other words, the representations $f^{(k)}_{\theta_k}(f^{(k-1)}_{\theta_{k-1}}(...(f^{(1)}_{\theta_1}(\myvec{x}))))$ are used directly as the inputs to the output layer whose parameters are the only ones to be adjusted by the network during learning. The second approach, which results in better accuracy, is fine-tuning the entire network's parameters for the classification task. By starting from the pretrained weights and biases in the hidden layers, we can train an instance of the above networks with competitive accuracy performance, compared to other methods solving this problem using hand-crafted features.
 
 \subsection{Benchmark}
 \noindent
-Several previous work has been developed for the classification problem on the same data set~\cite{andrzejak2001indications}; the main contribution of most of these work, however, were on designing various hand-crafted features for the EEG signals. They might also be different from each other in the target classes of interest. As examples, Nigam and Graupe~\cite{nigam2004neural} used two features based on the spike information of the signals for further learning and detecting patients in set $E$ (thus, binary classification problem). Kabir et al.~\cite{kabir2016epileptic} extracted statistical features based on ``optimum allocation technique'' to be used with logistic model trees for classifying volunteers into the three classes that are of interest of this project. Guler et al.~\cite{guler2005recurrent} employed Lyapunov exponents based features for classification using recurrent neural networks where the target classes are three sets $A$, $D$ and $E$. On another data set, Wulsin et al.~\cite{wulsin2011modeling} learned features of second-long segments of EEG signals using Deep Belief Networks~\cite{hinton2006reducing} and classified them into ``clinically significant'' EEG classes. To the best of my knowledge, there was no previous work reporting the results of using autoencoders for the data set that this project is interested in.
+The main purpose of this work is to explore the benefit of using pretrained autoencoders to train a multi-layer feed-forward neural network for the classification task at hand. Secion~\ref{sec:results} presents several results between different design choices and network configurations. For external comparisons, previous work has been developed for the classification problem on the same data set~\cite{andrzejak2001indications}; the main contribution of most of these work, however, were on designing various hand-crafted features for the EEG signals. They might also be different from each other in the target classes of interest. As examples, Nigam and Graupe~\cite{nigam2004neural} used two features based on the spike information of the signals for further learning and detecting patients in set $E$ (thus, binary classification problem). Kabir et al.~\cite{kabir2016epileptic} extracted statistical features based on ``optimum allocation technique'' to be used with logistic model trees for classifying volunteers into the three classes that are of interest of this project. Guler et al.~\cite{guler2005recurrent} employed Lyapunov exponents based features for classification using recurrent neural networks where the target classes are three sets $A$, $D$ and $E$. On another data set, Wulsin et al.~\cite{wulsin2011modeling} learned features of second-long segments of EEG signals using Deep Belief Networks~\cite{hinton2006reducing} and classified them into ``clinically significant'' EEG classes. To the best of my knowledge, there was no previous work reporting the results of using autoencoders for the data set that this project is interested in.
 
-The proposed method by Kabir et al.~\cite{kabir2016epileptic} on the data set of interest in this project outperforms many the state-of-the-art approaches using the same data set; among many other measures, the total accuracy of their approach was $95.3\%$. Since its target classes are the same with those of interest in this project, and their work represents a class of work using hand-crafted features, in my opinion it is reasonable to use the performance of their work as the baseline for the approach to be explored in this project. The hypothesis is that by using autoencoders, it is possible to learn a set of features automatically for classifying EEG signals with comparable results. The next section discusses measures to evaluate performance of classifiers in this domain.
-
+The proposed method by Kabir et al.~\cite{kabir2016epileptic} on the data set of interest in this project outperforms many the state-of-the-art approaches using the same data set; among many other measures, the total accuracy of their approach was $95.3\%$. Since its target classes are the same with those of interest in this project, and their work represents a class of work using hand-crafted features, it is reasonable to use the performance of their work as the baseline for the approach to be explored in this project. The hypothesis is that by using autoencoders, it is possible to learn a set of features automatically for classifying EEG signals with comparable results.
 
 \section{Methodology}
-
 \subsection{Data Preprocessing}
 
-The data set~\cite{andrzejak2001indications} contains 100 channels (or vector of voltage values) for each of the five sets of volunteers. Each channel is a vector of 4097 values that are EEG signals recorded in 23.6 seconds. The data set will be preprocessed as follows.
+The data set~\cite{andrzejak2001indications} contains 100 channels (vectors of micro-voltage values) for each of the five sets of volunteers. Each channel is a vector of 4097 values that are EEG signals recorded in $23.6$ seconds. The data set is then preprocessed as follows.
 \begin{itemize}
-\item Each channel is divided into 23 segments with equal length, each contains 178 values. These segments are marked with the target value $0$, $1$ or $2$ for the classes $A + B$, $C + D$ and $E$ of the original channel.
-\item The resulting set of segments are splitted into training and test set (using StratifiedShuffleSplit function from Scikit-Learn).
-\item The resulting set of segments in the training set are then normalized so that the values of EEG signals are in between $[0,1]$.
+\item Each channel is divided into 23 one-second segments with equal length, each contains 178 values. These segments are marked with the target value $0$, $1$ or $2$ for the classes $A + B$, $C + D$ and $E$ of the original channel.
+\item The resulting set of segments are splitted into three separate sets for training ($60\%$), validation ($20\%$) and testing ($20\%$) (using StratifiedShuffleSplit function from Scikit-Learn).
+\item The resulting set of segments in the training set are then normalized so that the values of EEG signals are in between $[-1,1]$. The internal state of the scaler (which contains for example the min and max signal values of the training set) is used to scale the other two sets into the same interval.
 \end{itemize}
-
-The data set was divided into three parts: training set ($60\%$), validation and testing sets ($20\%$ each). The testing set was set aside and not used in any ways during training or validating candidate models.
-
-The training data was scaled into $[-1, 1]$ as follows (the formula):... This is to fit to ELU activation function.
-
-The resulting scaling coefficients were then used to scale the testing and validation sets. This way we made sure that there were no information from the validation or testing sets used in any ways during training (data snooping).
 
 \subsection{Implementation}
 
+\noindent
+The approach proposed in this project was implemented in Python3 using TensorFlow library, and its source code could be found at the following link:
+\begin{center}
+\href{https://github.com/natuan/ml\_nano\_capstone.git}{\textit{https://github.com/natuan/ml\_nano\_capstone.git}}.
+\end{center}
+
+A copy of the original data set~\cite{andrzejak2001indications} can be found in folder \textbf{input}, and the training/validation/test sets can be found in folder \textbf{cache}. The main parts of the source code, located inside folder \textbf{src},are as follows:
+
+\begin{itemize}
+\item \textbf{DataSet.py}: class \texttt{DataSet} manages the loading and processing of the data set. Its tasks include dividing the original into smaller segments and assigning them into appropriate target classes. The function \texttt{create\_data\_set\_class\_AB\_CD\_E()} could be invoked to re-generate the training, validation and test sets with customized a split ratio and random seed. (The \texttt{root\_dir} local variable in this function needs to be changed to refer to the project folder.)
+\item \textbf{StackedAutoencoders.py}: contains the classes of autoencoders, \texttt{UnitAutoencoder}, and multi-layer feed-forward neural networks, \texttt{StackedAutoencoders}, built upon them. It also includes a builder class \texttt{StackBuilder} that is used in \texttt{Main.py} to construct and train individual autoencoders before using them to build the stacks (i.e., the multi-layer feedforward neural networks).
+\item \textbf{Main.py}: the main file where experiments were configured to run. The \texttt{\_main\_} function contains code to define autoencoders and the corresponding neural networks, as well as how to fine-tune and test the network on the traininig, validation and testing sets. Before running this file (as \texttt{>> python3 Main.py}), the \texttt{root\_dir} local variable needs to point to the project folder.
+\end{itemize}
+
 \subsection{Refinement}
 
+\noindent
+I spent much time training networks with sigmoid activation functions for hidden layers without much success (various values for the standard deviation of the Gaussian noise distribution and dropout rates were also used). Although the reconstruction errors of autoencoders were small enough, the accuracy performance of the corresponding neural networks was never more than $60\%$ even on the training set (with networks having 2 hidden layers, each with 200 neurons). I suspected that the shape of the sigmoid functions at some point during the training made the gradients extremely small (similar to observations reported in~\cite{glorot2010understanding}), and therefore learning became very slow. I eventually settled with the ELU activation function~\cite{clevert2015fast} that appeared to work well for the classification task at hand.
+
 \section{Results}
+\label{sec:results}
 
 \noindent
-\textbf{A. Randomly initialized vs. pretrained weights and biases:} We first examine the benefit of using weights and biases pretrained in unit autoencoders to initialize a multi-layer neural networks. Figure~\ref{fig:nopretrained_50_50} shows the learning curves for the training set (in red) and the validation set (in green) for a stack of two unit denoising autoencoders that were not pretrained. In other words, the weights and biases of the 2-layer fully connected network with $50$ neurons per layer, called $A_0$, were initialized randomly. Dropout technique with the rate $0.33$ (for input layer) and $0.5$ (for hidden layers) are used to cope with overfitting. During the training of this network, the best model was saved at step $3,878,215$ of batch updates, after which the network started to overfit to the training data (i.e., the validation curve began to go up). 
+The following hyper-parameters and settings were used throughout various configurations whose results are reported in this section.
+\begin{itemize}
+\item ELU activation function~\cite{clevert2015fast} was used for hidden layers of the autoencoders and the corresponding multi-layer feed-forward neural networks. As mentioned above, it provided much better result compared to the sigmoid function.
+\item The Adam optimizer was used with the learning rate of $5\mathrm{e}{-6}$. Quick but incomplete experiments with higher learning rates result in networks that more quickly overfitted the training set.
+\item Batch size was chosen to be $64$.
+\item Number of epochs was set to be $3\times10^6$, but early stopping was used when learning curves on the validation set started to go up, indicating that the corresponding model began to overfit the training set. (Many of the experiments below took about 2 days to complete.)
+\item Check points were defined as the batch update that was a multiple of $5 \times batchsize$, at which the accuracy performance was computed on the training and validation sets.
+\item Dropout technique was used consistently in all network configurations to deal with overfitting. As suggested by Srivastava et al.~\cite{srivastava2014dropout}, common values $0.33$ and $0.5$ were used for the dropout rates of neurons respectively in the input layer (unless noises were used to corrupt the input) and the hidden layers.
+\item To reduce the number of configurations that need to explore, I restricted to consider only multi-layer feed-forward neural networks that have the same number of neurons across different hidden layers.
+\end{itemize}
+
+In the following discussion, the network configurations are named based on the first subsection in which they are described.
+
+\vspace{5mm}
+\noindent
+\textbf{A. Randomly initialized vs. pretrained weights and biases:} We first examine the benefit of using weights and biases pretrained in autoencoders to initialize a multi-layer neural networks. Figure~\ref{fig:nopretrained_50_50} shows the learning curves for the training set (in red) and the validation set (in green) for a stack of two denoising autoencoders that were not pretrained. In other words, the weights and biases of the 2-hidden-layer fully connected network with $50$ neurons per layer, called $A_0$, were initialized randomly. Dropout technique with the rate $0.33$ (for input layer) and $0.5$ (for hidden layers) are used to cope with overfitting. During the training of this network, the best model was saved at step $3,878,215$ of batch updates, after which the network started to overfit to the training data (i.e., the validation curve began to go up). 
 
 \begin{figure}
   \includegraphics[width=\linewidth]{figures/nopretrained_50_50.eps}
-  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of a 2-layer, 50 neurons each, fully connected network, called $A_0$, with randomly initialized weights and biases. Notice that the validation curve started to go up after about $3.8$ millions of batch updates, indicating the overfitting of the network.}
+  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of a 2-hidden-layer, 50 neurons each, fully connected network, called $A_0$, with randomly initialized weights and biases. Notice that the validation curve started to go up after about $3.8$ millions of batch updates, indicating the overfitting of the network.}
   \label{fig:nopretrained_50_50}
 \end{figure}
 
-Figure~\ref{fig:stack_50_50_dropout_elu_learning_curves} shows the learning curves for a similar stack as above but the two unit denoising autoencoders were pretrained to reconstruct their inputs, and the resulting weights and biases were used to initialize the stack before being fine-tuned. We could observe that the network did not overfit even after more than $18$ millions batch updates, which is much better than $A_0$. The cross-entropy error of this network on the validation set can also be seen as much better than from the one with randomly initialized weights and biases: less than $0.3$ vs. greater than $0.4$. This by definition results in a difference between $A_1$ and $A_0$ in terms of prediction accuracy on the validation, and importantly, the \emph{test} sets: $90.34\%$ vs. $87.52\%$, respectively. The accuracy errors by the two networks on the various sets are shown in Table~\ref{tab:Accuracy_A0_vs_A1}.
+Figure~\ref{fig:stack_50_50_dropout_elu_learning_curves} shows the learning curves for a similar stack as above but the two denoising autoencoders were pretrained to reconstruct their inputs, and the resulting weights and biases were used to initialize the stack before being fine-tuned. We could observe that the network did not overfit even after more than $18$ millions batch updates, which is much better than $A_0$. The cross-entropy error of this network on the validation set can also be seen as much better than from the one with randomly initialized weights and biases: less than $0.3$ vs. greater than $0.4$. This by definition results in a difference between $A_1$ and $A_0$ in terms of prediction accuracy on the validation, and importantly, the \emph{test} sets: $90.34\%$ vs. $87.52\%$, respectively. The accuracy errors by the two networks on the various sets are shown in Table~\ref{tab:Accuracy_A0_vs_A1}.
 
 \begin{table}
 \begin{center}
@@ -337,7 +364,7 @@ Although the network $A_1$ had a wider accuracy gap between its training and val
 
 \begin{figure}
   \includegraphics[width=\linewidth]{figures/stack_50_50_dropout_elu/learning_curves.eps}
-  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of a 2-layer fully connected network, called $A_1$, whose weights and biases were initialized with pretrained values.}
+  \caption{Cross-entropy error (Y-axis) on the training (red) and validation (green) sets of a 2-hidden-layer fully connected network, called $A_1$, whose weights and biases were initialized with pretrained values.}
   \label{fig:stack_50_50_dropout_elu_learning_curves}
 \end{figure}
 
@@ -345,9 +372,9 @@ Although the network $A_1$ had a wider accuracy gap between its training and val
 \noindent
 \textbf{B. Traditional vs. denoising autoencoders:}
 \noindent
-We now compare two types of autoencoders, traditional and denoising, in terms of reconstructing orginal inputs and, more importantly, of learning representations for our classification problem. The denoising autoencoders here were those used to pretrain weights/biases of $A_1$, which learned their unique features by reconstructing the inputs from their corrupted version. The traditional autoencoders had the same configuration with the other type (i.e., number of neurons, dropout rates for the hidden layer), except that they attempted to reconstruct the inputs from themself instead of their corrupted version. To test their representations in classifying the target signals, we constructed a 2-layer fully-connected neural network, called $B_0$, whose weights and biases were initialized from the two pretrained traditional autoencoders.
+We now compare two types of autoencoders, traditional and denoising, in terms of reconstructing orginal inputs and, more importantly, of learning representations for our classification problem. The denoising autoencoders here were those used to pretrain weights/biases of $A_1$, which learned their unique features by reconstructing the inputs from their corrupted version. The traditional autoencoders had the same configuration with the other type (i.e., number of neurons, dropout rates for the hidden layer), except that they attempted to reconstruct the inputs from themself instead of their corrupted version. To test their representations in classifying the target signals, we constructed a 2-hidden-layer fully-connected neural network, called $B_0$, whose weights and biases were initialized from the two pretrained traditional autoencoders. No Gaussian noises or dropout was applied to the inputs of the network $B_0$.
 
-Table~\ref{tab:reconstruction_errors} shows the reconstruction errors by two autoencoders of the above types used to construct the layers of networks $A_1$ and $B_0$. On both the training and validation sets, the traditional autoencoders which processed the inputs directly resulted in more accurate reconstructed signals, i.e. with smaller errors, than those produced by the denoising counterpart; and this is true for autoencoders at two layers of the networks.
+Table~\ref{tab:reconstruction_errors} shows the reconstruction errors by two autoencoders of the above types used to construct the layers of networks $A_1$ and $B_0$. On both the training and validation sets, the traditional autoencoders which processed the inputs directly resulted in more accurate reconstructed signals, i.e. with smaller errors, than those produced by the denoising counterpart; and this is true for autoencoders corresponding to both two hidden layers of the networks.
 
 \begin{table}[!htbp]
 \centering
@@ -364,7 +391,22 @@ Denoise    &  0.0019  &  0.0021   & 0.0011  & 0.0011\\
 \label{tab:reconstruction_errors}
 \end{table}
 
-The outperformance of traditional autoencoders in reconstructing the input signals, however, did not transform to its classification performance. Figure~\ref{fig:stack_50_50_dropout_elu_clean_input} shows the cross-entropy errors by the network $B_0$: it was expressive enough and achieved $97.13\%$ accuracy on the training set, however overfitted early after step $1,675,620$ of batch updates. The accuracy of the resulting best model on the validation and testing sets were $90.47\%$ and $91.78\%$, respectively. (The corresponding statistics by $A_1$ was presented in the previous result section.) Both the about $7\%$ performance gaps on between the training and the two independent sets, and the $>1\%$ gap between the validation and test sets indicate that this model suffers from high variance. The network $A_1$, which used features extracted through reconstructing corrupted inputs, as shown in Figure~\ref{fig:stack_50_50_dropout_elu}, provided a comparable and more reliable accuracy performance on unseen data.
+Figure~\ref{fig:reconstructed_inputs_comparison} shows the 522th segment and its reconstructed signals produced by networks $B_0$ and $A_1$. We can notice that at around the dimension 150th, the signal generated by the network $B_0$ shows more accurate reconstructed curve than that of $A_1$. This observation can be seen with other segments and their reconstructed signals, consistent with the comparison above between the networks in terms of their reconstructed errors.
+\begin{figure}
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=.8\linewidth]{figures/clean_input_example_522.eps}
+\end{subfigure}%
+~
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=.8\linewidth]{figures/corrupted_input_example_522.eps}
+\end{subfigure}
+\caption{Segment 522th and its reconstructed signals produced by networks $B_0$ (left) and $A_1$ (right).}
+\label{fig:reconstructed_inputs_comparison}
+\end{figure}
+
+The outperformance of traditional autoencoders in reconstructing the input signals, however, did not transform to its classification performance. Figure~\ref{fig:stack_50_50_dropout_elu_clean_input} shows the cross-entropy errors by the network $B_0$: it was expressive enough and achieved $97.13\%$ accuracy on the training set, however overfitted early after step $1,675,620$ of batch updates. The accuracy of the resulting best model on the validation and testing sets were $90.47\%$ and $91.78\%$, respectively. (The corresponding statistics by $A_1$ was presented in the previous result section.) Both the about $7\%$ performance gaps on between the training and the two independent sets, and the $>1\%$ gap between the validation and test sets indicate that this model suffers from high variance. The network $A_1$, which used features extracted through reconstructing corrupted inputs, as shown in Figure~\ref{fig:stack_50_50_dropout_elu_learning_curves}, provided a comparable and more reliable accuracy performance on unseen data.
 
 \begin{figure}
   \includegraphics[width=\linewidth]{figures/stack_50_50_dropout_elu_clean_input/stack_50_50_dropout_elu_clean_input.eps}
@@ -438,7 +480,7 @@ For the same set of neurons, Figure~\ref{fig:weights_stack_50_50_dropout_elu} sh
 \label{fig:weights_stack_50_50_dropout_elu}
 \end{figure}
 
-\textit{Comparision on networks of 75-neuron layers}: Table~\ref{tab:Accuracy_B1_vs_B2} shows the accuracy performances of networks $B_1$ and $B_2$ with 2 layers fully connected networks, each having 75 neurons. They differed in exactly the same way $B_0$ and $A_1$ were distinguished: $B_1$ reconstructed the original signals from clean inputs, whereas $B_2$ did that from the corrupted inputs. We can again observe from the accuracy gaps that by reconstructing the inputs from their corrupted version, the denoising autoencoders extracted features that helped the network classifier learned a model that was more reliable in predicting the target classes.
+\textit{Comparison on networks of 75-neuron layers}: Table~\ref{tab:Accuracy_B1_vs_B2} shows the accuracy performances of networks $B_1$ and $B_2$ with 2-hidden-layer fully connected networks, each having 75 neurons. They differed in exactly the same way $B_0$ and $A_1$ were distinguished: $B_1$ reconstructed the original signals from clean inputs, whereas $B_2$ did that from the corrupted inputs. We can again observe from the accuracy gaps that by reconstructing the inputs from their corrupted version, the denoising autoencoders extracted features that helped the network classifier learned a model that was more reliable in predicting the target classes.
 
 \begin{table}
 \begin{center}
@@ -452,10 +494,6 @@ $B_2$ & $94.28\%$ & $89.99\%$ & $90.69\%$\\ \hline
 \label{tab:Accuracy_B1_vs_B2}
 \end{center}
 \end{table}
-
-\vspace{5mm}
-\noindent
-\textbf{B1. The recovered signals:}
 
 \vspace{5mm}
 \noindent
@@ -486,6 +524,7 @@ $A_1$ & $93.17\%$ & $88.96\%$ & $90.34\%$ \\ \hline
 \vspace{5mm}
 \noindent
 \textbf{D. Denoising autoencoders with dropout: number of neurons and layers}
+
 \noindent
 \textit{Number of hidden neurons:} Table~\ref{tab:Accuracy_diff_num_neurons} shows the accuracy performance on the three sets of 2-hidden-layer networks with different number of hidden neurons. We can see that increasing the size of the hidden layers from $50$ to $75$ and to $100$ improved the accuracy up to $1\%$; unfortunately the performance gaps between training and validation/test sets also got wider, increasing the variances of the bigger networks. With $250$ hidden neurons (network $D_1$), the network achieved $99.42\%$ accuracy on the training set but did not improve much on the independent test set ($91.95\%$). As shown in Figure~\ref{fig:stack_250_250_dropout_elu}, this network overfitted to the training set at step $6,073,855$ of batch updates. For that many hidden neurons, perhaps a more agressive dropout would be needed to cope with overfitting.
 
@@ -540,10 +579,22 @@ $D_3$ & $3$ & $92.98\%$ & $88.56\%$ & $89.69\%$\\ \hline
 \end{center}
 \end{table}
 
+\vspace{5mm}
+\noindent
+\textit{External comparison}: As mentioned earlier, the work by Kabir et al.~\cite{kabir2016epileptic} achieved an accuracy of $95.3\%$ on an independent test set. The best performance I could get from training various network configurations is about $90.34\%$ to $91.52\%$ (with 2-hidden layer networks of $50$ and $75$ neurons per hidden layer), which in my opinion is very encouraging for an approach that learns features automatically. One important difference between my work and the one by Kabir et al.~\cite{kabir2016epileptic} is that their approach required the original 23.6-second channels to be divided into 5.9-second segments, more than 5 times longer than those used in the present approach. Their method, which was based on computing special statistics from those 5.9-second segments, might need such long segments in order to gather enough information for classification.
 
 \section{Conclusion}
+
 \noindent
-Future work includes considering sparse autoencoder\cite{boureau2008sparse} and variational autoencoders \cite{kingma2013auto}
+This work presented and implemented an approach to classifying brain activitiy signals~\cite{andrzejak2001indications} into classes related to epileptic seizure disease. The proposed method resulted in neural network that achieved accuracy of about $90.34\%$ to $91.52\%$ on an independent test set. Although this accuracy result is lower than the work by Kabir et al.~\cite{kabir2016epileptic} on the same target classes, this work used much smaller 1-second segments, making it more sensitive to be used in potential applications such as medical wearable devices.
+
+Due to my limited time, there are still items that I proposed but have not completed, and are worth further investigation. Future work include: 
+\begin{itemize}
+\item consider using other types of autoencoders such as sparse autoencoders~\cite{boureau2008sparse} and variational autoencoders~\cite{kingma2013auto} for this data set;
+\item consider using other classifiers such as Decision Trees, K-Kearest Neighbors, Support Vector Machines and Boosting with the representations learned by the sequence of autoencoders;
+\item compare different approaches in terms of other measures such as F1 score.
+\end{itemize}
+
 
 \bibliographystyle{abbrv}
 \bibliography{report}

@@ -277,25 +277,3 @@ if __name__ == "__main__":
     print("Valid accuracy by stack 1: {}".format(valid_accuracy))
     test_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
     print("Test accuracy by stack 1: {}".format(test_accuracy))
-
-    """
-    print("========== BUILDING STACK 2 ============\n")
-    name = "stack_50_50"
-    preceding_units, preceding_unit_model_paths = stack_builder_1.get_units_and_model_paths()
-    n_neurons_per_layer = [50]
-    noise_stddev = [0.05] * len(n_neurons_per_layer)
-    dropout_rate = [None] * len(n_neurons_per_layer)
-    stack_builder_2 = build_pretrained_stack(name,
-                                             preceding_units=preceding_units,
-                                             preceding_unit_model_paths=preceding_unit_model_paths,
-                                             n_neurons_per_layer=n_neurons_per_layer,
-                                             noise_stddev=noise_stddev,
-                                             dropout_rate=dropout_rate)
-    print("End: Build pretrained stack 2\n")
-    print("Start: Fine tuning the pretrained stack...\n")
-    fine_tune_pretrained_stack(stack_builder_2, X_train, X_valid, y_train, y_valid)
-    print("End: Fine tuning the pretrained stack 2\n")
-    stack_2 = stack_builder_2.get_stack()
-    accuracy = stack_2.restore_and_eval(model_path=stack_builder_2.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
-    print("Accuracy by stack 2: {}".format(accuracy))
-    """
