@@ -5,6 +5,6 @@ This capstone project submission contains the following:
 - README: this file
 
 NOTE: 
-- The project can be downloaded at https://github.com/natuan/ml_nano_capstone.git, 
+- The project can be downloaded at https://github.com/natuan/ml_nano_capstone.git.
 - In the project folder, the source code files can be found inside subfolder "src", the original data set can be found inside the subfolder "input". The training, validation and test sets were generated inside the subfolder "cache".
 - The root_dir variable inside "src/Main.py" needs to refer to the project folder. If the training, validation and test sets are to be regenerated, the same root_dir variable needs to be changed inside "src/DataSet.py" as well.
