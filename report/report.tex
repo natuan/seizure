@@ -401,18 +401,40 @@ Each step of the training is performed by running the training operator within a
 \subsubsection{Building a feed-forward neural network from pretrained autoencoders}
 
 \noindent
-The feed-forward network is largely built based upon the encoding parts of the pretrained autoencoders, in particular for the architecture and parameters of its hidden layers. While the autoencoders are trained in an unsupervised fashion (their inputs are the expected outputs), the network is designed for supervised learning with predefined target classes. The network's tensor inputs, therefore, include the class tensor \texttt{y} (in addition to the tensor representing the input vectors \texttt{X} and the training/testing mode \texttt{training}):
+Recall that the computation of hidden layers in the autoencoders is intended to act as their encoder, and that of the output layers as their decoders. By putting together the encoding parts of a sequence of autoencoders, one can build an expressive encoder that consists of a multiple layers of neurons. The feed-forward network for the problem of interest is largely built based upon those stacked up pretrained encoders, together with a softmax output layer for the classification purpose. While the autoencoders are trained in an unsupervised fashion (their inputs are also their expected outputs), the network is designed for supervised learning with predefined target classes. The network's tensor inputs, therefore, must include a tensor \texttt{y} representing the target class, in addition to the tensor representing the input vectors \texttt{X} and the training/testing mode \texttt{training}:
 \begin{verbatim}
-  y = tf.placeholder(tf.int64, shape=(None), name="y")
+  y = tf.placeholder(tf.int64, shape=(None), name="y").
 \end{verbatim}
 
-Softmax output layer
+Although the hidden layer $i$-th of the multi-layer feed-forward network is literally a copy of the encoder of the $i$-th pretrained autoencoder (i.e., with the same input size, number of hidden neurons, and their weight/bias values), in TensorFlow its weights and biases are created explicitly (without using predefined layers of the library); this way we can initialize them with the pretrained values from the corresponding autoencoder.
 
+Given an autoencoder \texttt{unit} which provides functions \texttt{hidden\_weights()} and \texttt{hidden\_biases()} to obtain the trained weights and biases, we can create tensors for the weights and biases of the new hidden layer as follows:
+\begin{verbatim}
+  weights = tf.Variable(unit.hidden_weights(), name = "weights"),
+  biases = tf.Variable(unit.hidden_biases(), name = "biases").
+\end{verbatim}
 
+Starting from some previously built layer \texttt{input\_tensor}, which could be either the input layer or the output of a previous hidden layer, we can specify the computation of the new hidden layer of the network as follows:
+\begin{verbatim}
+  pre_activations = tf.matmul(input_tensor, weights) + biases
+  hidden_outputs = unit.hidden_activation(pre_activations, 
+                                          name = "hidden_outputs"),
+\end{verbatim}
+\noindent
+where \texttt{unit.hidden\_activation} defines the activation function of the unit. Note also that depending on the option about using dropout for the new hidden layer of the network, a dropout layer might need to be added on top of \texttt{hidden\_outputs} in the same way as described above.
 
+The softmax output layer with the cross-entropy loss function can be implemented by (1) creating weights and biases tensors for the output layer and computing their ``pre\_activations'' as above (called \texttt{outputs}), then (2) using \texttt{tf.nn.sparse\_softmax\_cross\_entropy\_with\_logits} to compute the cross-entropy loss function:
+\begin{verbatim}
+  entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, 
+                                                           logits=outputs)
+  loss=tf.reduce_mean(entropy, name="entropy_loss").
+\end{verbatim}
 
+Finally, a training operator needs to be created to minimize the loss function, and the training can be done by running the operator given the batches of training examples, their target values and the \texttt{training} tensor set to be \texttt{True}.
 
-A copy of the original data set~\cite{andrzejak2001indications} can be found in folder \textbf{input}, and the training/validation/test sets can be found in folder \textbf{cache}. The main parts of the source code, located inside folder \textbf{src},are as follows:
+\vspace{5mm}
+\noindent
+\textbf{Source code organization:} A copy of the original data set~\cite{andrzejak2001indications} can be found in folder \textbf{input}, and the training/validation/test sets can be found in folder \textbf{cache}. The main parts of the source code, located inside folder \textbf{src}, are as follows:
 
 \begin{itemize}
 \item \textbf{DataSet.py}: class \texttt{DataSet} manages the loading and processing of the data set. Its tasks include dividing the original into smaller segments and assigning them into appropriate target classes. The function \texttt{create\_data\_set\_class\_AB\_CD\_E()} could be invoked to re-generate the training, validation and test sets with customized a split ratio and random seed. (The \texttt{root\_dir} local variable in this function needs to be changed to refer to the project folder.)
@@ -422,10 +444,45 @@ A copy of the original data set~\cite{andrzejak2001indications} can be found in 
 
 \subsection{Refinement}
 
-Two refinements were made: replacing sigmoid with ELU, discover bug regarding dropout (by looking at the learning curve)
-
 \noindent
-I spent much time training networks with sigmoid activation functions for hidden layers without much success (various values for the standard deviation of the Gaussian noise distribution and dropout rates were also used). Although the reconstruction errors of autoencoders were small enough, the accuracy performance of the corresponding neural networks was never more than $60\%$ even on the training set (with networks having 2 hidden layers, each with 200 neurons). I suspected that the shape of the sigmoid functions at some point during the training made the gradients extremely small (similar to observations reported in~\cite{glorot2010understanding}), and therefore learning became very slow. I eventually settled with the ELU activation function~\cite{clevert2015fast} that appeared to work well for the classification task at hand.
+\textit{Refining activation functions for hidden layers}: The sigmoid activation functions\footnote{For this activation function, the orginal signals were scaled to $[0,1]$.} were first used for hidden layers together with various options for the noises and dropout, but the accuracy performances were pretty poor. Although the reconstruction errors of autoencoders were small enough, the accuracy performance of the corresponding neural networks was never more than $60\%$ even on the training set (with networks having 2 hidden layers, each with 200 neurons). Table~\ref{tab:replace_sigmoid} shows the accuracy performances of some networks using the sigmoid activation functions. I suspected that the shape of the sigmoid functions at some point during the training made the gradients extremely small (similar to observations reported in~\cite{glorot2010understanding}), and therefore learning became very slow. I eventually settled with the ELU activation function~\cite{clevert2015fast} that appeared to work well for the classification task at hand.
+
+\begin{table}
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\#Layers & \#Neurons/layer & Noise stddev & Dropout rate & Accuracy \\ \hline \hline
+1 & 50 & None & 0.1 & 43\% \\ \hline
+1 & 200 & 0.05 & None & 48\% \\ \hline
+2 & 200, 200 & 0.05 & None & 54\% \\ \hline
+2 & 200, 200 & 0.05 & 0.1-0.33 & 49\% \\ \hline
+\end{tabular}
+\caption{Accuracy on the training set by some networks using sigmoid activation functions.}
+\label{tab:replace_sigmoid}
+\end{center}
+\end{table}
+
+\vspace{5mm}
+\noindent
+\textit{Number of neurons and hidden layers}: I experimented with networks having different number of neurons per layer.\footnote{To reduce the number of hyperparameters to consider, I enforced that the number of neurons are the same across different layers of the network. Similar constraints were assumed in~\cite{vincent2010stacked}.} The following Table~\ref{tab:refine_neurons} shows performances of networks with 2 hidden layers with different number of neurons. The ELU activation functions were used for hidden layers of these networks. They also had the same setting for dropout rates, in particular: $0.33$ for input layers and $0.5$ for hidden layers in all autoencoders and the derived neural networks. The same settings for the optimizer were also used for them (in particular, Adam optimizer with $5e-6$ learning rate).
+
+\begin{table}
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\#Layers & \#Neurons/layer & Testing accuracy \\ \hline \hline
+2 & 10 & 76\% \\ \hline
+2 & 35 & 87\% \\ \hline
+2 & 50 & 89\% \\ \hline
+2 & 75 & 90.69\% \\ \hline
+2 & 100 & 91.52\% \\ \hline
+\end{tabular}
+\caption{Accuracy on the testing set by some networks using sigmoid activation functions.}
+\label{tab:refine_neurons}
+\end{center}
+\end{table}
+
+In Section~\ref{sec:results}, I present results for different settings of the networks in more details.
 
 \section{Results}
 \label{sec:results}
@@ -695,7 +752,19 @@ $D_3$ & $3$ & $92.98\%$ & $88.56\%$ & $89.69\%$\\ \hline
 \section{Conclusion}
 
 \noindent
-This work presented and implemented an approach to classifying brain activitiy signals~\cite{andrzejak2001indications} into classes related to epileptic seizure disease. The proposed method resulted in neural network that achieved accuracy of about $90.34\%$ to $91.52\%$ on an independent test set. Although this accuracy result is lower than the work by Kabir et al.~\cite{kabir2016epileptic} on the same target classes, this work used much smaller 1-second segments, making it more sensitive to be used in potential applications such as medical wearable devices.
+This work presented an approach to classifying brain activitiy signals in the data set provided by ~\cite{andrzejak2001indications} into volunteer classes related to epileptic seizure disease. The proposed method and results can be summarized as follows:
+\begin{itemize}
+\item Two types of autoencoders, traditional and denoising, were used to learn representations of the original signal segments.
+\item The encoding parts of the autoencoders were then put together to form the hidden layers of a multi-layer feed-forward neural network.
+\item The network was then fine-tuned to classify three classes of volunteers.
+\item The performances of the network on an independet test set vary from $90.34\%$ to $91.52\%$, obtained from networks with 2 hidden layers with 50 to 70 neurons per layer. These network configurations appeared to converge with stable gaps between training and validation performances. Although this accuracy result is lower than the work by Kabir et al.~\cite{kabir2016epileptic} on the same target classes, this work used much smaller 1-second segments, making it more sensitive to be used in potential applications such as medical wearable devices.
+\end{itemize}
+
+I learned valuable lessons from this project:
+\begin{itemize}
+\item This is the first time I learned to use TensorFlow directly (instead of through Keras). I also found Tensorboard very helpful in observing the training process.
+\item I learned to recognize when the network appeared to overfit to the training data set. I also learned how to first test the capacity of the network (by not putting in any dropout rates), and then how to cope with overfitting.
+\end{itemize}
 
 Due to my limited time, there are still items that I proposed but have not completed, and are worth further investigation. Future work include: 
 \begin{itemize}
