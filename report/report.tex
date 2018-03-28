@@ -9,6 +9,7 @@
 \usepackage{subcaption}
 \usepackage{booktabs}
 \usepackage{hyperref,xcolor}
+\usepackage{listings}
 
 \newcommand{\myvec}[1]{\mathbf{#1}}
 
@@ -36,8 +37,13 @@ The formation of the training set $X$ and target $y$ is presented in more detail
 
 \subsection{Metrics}
 \label{sec:metric}
+The purpose of a hypothesis returned for the problem stated above is to classify unseen brain activity segments, correctly as frequently as possible, into one of the volunteer classes $\{1, 2, 3\}$. The \textit{accuracy} is the most important measure for this purpose. Given a hypothesis $h$ and a set of examples $T$, let $C_k(h,T)$ be the number of examples in $T$ classified into correct class $k$ ($k \in \{1,2,3\}$) by $h$. The accuracy of $h$ on the set $T$ is formally defined as follows:
 
-The quality of the returned hypothesis is evaluated on an independent test set using the accuracy measure, which is the percentage of samples classified into their correct classes. The test set is created from randomly chosen $20\%$ of the given data set. Although, as suggested by Wulsin et al.~\cite{wulsin2011modeling}, the classification time is considered important for applications monitoring EEG signals of patients, the testing set is small enough that the prediction time performed by the multi-layer neural network classifiers is much less than 1 second and therefore will not be discussed further in the result section. (I also regret to note that my implementation did not initially put in tensors for recording the $F_1$ score, which should also be a meaningful measure to examine.)
+\[Acc(h, T) = \frac{\sum_{k\in\{1,2,3\}}C_k(h,T)}{|T|}.\]
+
+The accuracy measure is used on both the training set to update parameters of a model under construction and the validation set to approximate the performance of the model on future unseen data set. Candidate models are ranked based on their accuracy on an independent test set.
+
+%The quality of the returned hypothesis is evaluated on an independent test set using the accuracy measure, which is the percentage of samples classified into their correct classes. The test set is created from randomly chosen $20\%$ of the given data set. Although, as suggested by Wulsin et al.~\cite{wulsin2011modeling}, the classification time is considered important for applications monitoring EEG signals of patients, the testing set is small enough that the prediction time performed by the multi-layer neural network classifiers is much less than 1 second and therefore will not be discussed further in the result section. (I also regret to note that my implementation did not initially put in tensors for recording the $F_1$ score, which should also be a meaningful measure to examine.)
 
 \section{Analysis}
 
@@ -245,6 +251,13 @@ $E$ & -1885 & 2047 & -4.74 & 341.15 & -175 & -5 & 177 \\ \hline
 \subsection{Algorithms and Techniques}
 \label{sec:solution}
 
+\noindent
+As mentioned earlier, much work has been done on this data set that focused on extracting hand-crafted features to be used for classifying the segments into volunteer target classes (\cite{nigam2004neural}, ~\cite{guler2005recurrent}, ~\cite{kannathal2005entropies}). Since the ability to automatically learn features and representations is a key benefit of machine learning, a reasonable question is whether one could automatically learn features from the EEG signals in this domain for classification purposes, and if so then which algorithm could be used effectively.
+
+Deep architectures of neural networks have been successful recently in many machine learning applications, and part of their success is due to their ability to learn high-level features. On the other hand, training deep networks is costly, and one way to tackle this challenge is to initialize their parameters with values obtained from pretraining some types of networks. Two types of such networks have been widely used: restricted Boltzmann machines~\cite{hinton2006reducing} and autoencoders\cite{bengio2007greedy}. For EEG signal domains, previous work such as Wulsin et al.~\cite{wulsin2011modeling} pretrained restricted Boltzmann machines for feature learning and classification, and although Bengio et al.~\cite{bengio2007greedy} showed that autoencoders worked equally well as restricted Boltzmann machines, there were no previous work, to the best of my knowledge, which used autoencoders for learning representations and classification in the epileptic seisure domain~\cite{andrzejak2001indications} of interest.
+
+The proposed approach therefore is to train autoencoders for extracting representations of the input signals, and then ultilize the pretrained autoencoders to form a deep neural network for the classification task at hand. The architecture of multi-layer feed-forward neural networks was chosen as (1) it can nicely incorporate the encoding parts of the pretrained autoencoders, and (2) it allows for \textit{fine-tuning} the pretrained parameters for classifying the specific target classes, a technique that usually help improve the performance of deep neural networks.
+
 \subsubsection{Training autoencoders}
 \noindent
 A \textit{traditional autoencoder} (\cite{bengio2007greedy}, \cite{vincent2010stacked}) is a fully connected feed-forward neural network which consists of an input layer, one hidden layer and an output layer such that the input and output layers have the same number of neurons. The computation performed by the hidden layer, specified by a weight matrix $\myvec{W}$, bias vector $\myvec{b}$ and nonlinear activation function $s$, acts as an \textit{encoder} that maps an input vector $\myvec{x}$ to a representation $f_{\theta}(\myvec{x})$ defined as follows:
@@ -300,10 +313,104 @@ The data set~\cite{andrzejak2001indications} contains 100 channels (vectors of m
 \subsection{Implementation}
 
 \noindent
-The approach proposed in this project was implemented in Python3 using TensorFlow library, and its source code could be found at the following link:
+The approach proposed in this project was implemented in Python 3 using TensorFlow library, and its source code could be found at the following link:
 \begin{center}
 \href{https://github.com/natuan/ml\_nano\_capstone.git}{\textit{https://github.com/natuan/ml\_nano\_capstone.git}}.
 \end{center}
+
+In the following, I discuss at high level the key components of the implementation of autoencoders, the derived feed-forward neural network, and the elements that support for their training and testing.
+
+\subsubsection{Autoencoders}
+\noindent
+The autoencoders were implemented in the class \texttt{UnitAutoencoder} inside folder \textit{src/StackedAutoencoders.py}. Figure~\ref{fig:autoencoders} shows the conceptual image of the two types of autoencoders, optionally with dropout applied to the hidden layers for dealing with overfitting. In TensorFlow, the key elements of the autoencoders can be implemented roughly as follows.
+
+\begin{figure}
+  \includegraphics[width=0.9\linewidth]{figures/autoencoders.eps}
+  \caption{Traditional (left) and denoising (right) autoencoders with an input layer, a hidden layer and an output layer. Dropout technique is applied to hidden layers in the two types of autoencoder for dealing with overfitting, and to the input layer also for corrupting the input vectors.}
+  \label{fig:autoencoders}
+\end{figure}
+
+\textit{Input tensors}: the input vectors of size \texttt{n\_inputs} are placed into a ``place holder''\footnote{Here \texttt{tf} stands for the imported module tensorflow.}:
+\begin{verbatim}
+  X = tf.placeholder(tf.float32,
+                     shape=[None, n_inputs],
+                     name='X'),
+\end{verbatim}
+\noindent
+whose value will be assigned at run-time. To facilitate the use of dropout, which takes effect only during training, one needs also define a boolean tensor as another input of the network indicating the training/test mode:
+\begin{verbatim}
+  training = tf.placeholder_with_default(False, 
+                                         shape=(), 
+                                         name='training').
+\end{verbatim}
+
+\textit{Input layer}: the input layer of the traditional autoencoders is specified simply with the tensor $X$. When dropout is used to corrupt the inputs for denoising autoencoders, the dropout layer construct in TensorFlow, \texttt{tf.layers.dropout}, can be used on top of the original input if the \texttt{training} is set to be \texttt{True}:
+\begin{verbatim}
+  X_noisy = tf.layers.dropout(X, input_dropout_rate, 
+                              training=training),
+\end{verbatim}
+\noindent
+where the second parameter specifies the dropout rate. Alternatively, Gaussian noises, implemented using \texttt{tf.random\_normal}, can be used to corrupt the inputs if the network is in training mode:
+\begin{verbatim}
+  X_noisy = tf.cond(training,
+                    lambda: X + tf.random_normal(tf.shape(self.X), 
+                                                 stddev = noise_stddev),
+                    lambda: X).
+\end{verbatim}
+
+\textit{Hidden layer}: The construct \texttt{tf.layers.dense} can be used to construct the dense hidden layer of \texttt{n\_neurons} neurons right after \texttt{X\_noisy} as follows:
+\begin{verbatim}
+  dense_hidden = tf.layers.dense(X_noisy, n_neurons, 
+                                 activation=hidden_activation,
+                                 ...),
+\end{verbatim}
+\noindent
+where \texttt{hidden\_activation} specifies the activation function used for the neurons. (Unused arguments were omitted to simplify discussion.) A dropout layer could then be put on top of the hidden layer for dealing with the overfitting issue:
+\begin{verbatim}
+  hidden = tf.layers.dropout(dense_hidden, 
+                             hidden_dropout_rate,
+                             training=training),
+\end{verbatim}
+where \texttt{hidden\_dropout\_rate} defines the dropout rate for the hidden layer.
+
+\textit{Output layer}: the output layer of \texttt{n\_inputs}, the same size with the input layer, can be implemented using \texttt{tf.layers.dense}, right after the layer \texttt{hidden} above:
+\begin{verbatim}
+  outputs = tf.layers.dense(hidden, 
+                            n_inputs, 
+                            activation=output_activation,
+                            ...).
+\end{verbatim}
+The \texttt{output\_activation} can be used to customize the activation function for the output layer; as mentioned earlier an affine mapping should be used given the real-valued inputs and the squared reconstruction error function.
+
+\textit{Reconstruction error}: in order to extract representations of the inputs, the autoencoder is trained to minimize the difference between its outputs and the original inputs. The reconstruction error is defined using the squared-error loss:
+\begin{verbatim}
+  reconstruction_loss = tf.reduce_mean(tf.square(outputs - X)).
+\end{verbatim}
+
+\textit{Training operator}: To train the network, a training operator first needs to be defined to optimize the above reconstruction loss:
+\begin{verbatim}
+  training_op = optimizer.minimize(reconstruction_loss).
+\end{verbatim}
+
+Each step of the training is performed by running the training operator within a TensorFlow session \texttt{sess}, feeding the network with a current batch \texttt{X\_batch} and the \texttt{True} value for input tensors \texttt{X} and \texttt{training}, respectively:
+\begin{verbatim}
+  sess.run(training_op, feed_dict={X: X_batch, 
+                                   training: True}).
+\end{verbatim}
+
+\subsubsection{Building a feed-forward neural network from pretrained autoencoders}
+
+\noindent
+The feed-forward network is largely built based upon the encoding parts of the pretrained autoencoders, in particular for the architecture and parameters of its hidden layers. While the autoencoders are trained in an unsupervised fashion (their inputs are the expected outputs), the network is designed for supervised learning with predefined target classes. The network's tensor inputs, therefore, include the class tensor \texttt{y} (in addition to the tensor representing the input vectors \texttt{X} and the training/testing mode \texttt{training}):
+\begin{verbatim}
+  y = tf.placeholder(tf.int64, shape=(None), name="y")
+\end{verbatim}
+
+Softmax output layer
+
+
+
+
 
 A copy of the original data set~\cite{andrzejak2001indications} can be found in folder \textbf{input}, and the training/validation/test sets can be found in folder \textbf{cache}. The main parts of the source code, located inside folder \textbf{src},are as follows:
 
@@ -314,6 +421,8 @@ A copy of the original data set~\cite{andrzejak2001indications} can be found in 
 \end{itemize}
 
 \subsection{Refinement}
+
+Two refinements were made: replacing sigmoid with ELU, discover bug regarding dropout (by looking at the learning curve)
 
 \noindent
 I spent much time training networks with sigmoid activation functions for hidden layers without much success (various values for the standard deviation of the Gaussian noise distribution and dropout rates were also used). Although the reconstruction errors of autoencoders were small enough, the accuracy performance of the corresponding neural networks was never more than $60\%$ even on the training set (with networks having 2 hidden layers, each with 200 neurons). I suspected that the shape of the sigmoid functions at some point during the training made the gradients extremely small (similar to observations reported in~\cite{glorot2010understanding}), and therefore learning became very slow. I eventually settled with the ELU activation function~\cite{clevert2015fast} that appeared to work well for the classification task at hand.
