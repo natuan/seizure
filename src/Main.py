@@ -13,7 +13,6 @@ from time import time
 from DataSet import *
 from FeatureExtractor import FeatureExtractor
 from StackedAutoencoders import *
-from Classifier import Classifier
 from Utils import *
 
 # Load the original data set, and creating segment data
@@ -169,7 +168,7 @@ def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid
     n_epochs = 300000
     batch_size = 64
     n_batches = len(X_train_scaled) // batch_size
-    checkpoint_steps = 5 * n_batches
+    checkpoint_steps = 5*n_batches
     seed = 0
     print("Fine tuning...\n")
     model_step, all_steps = stack_builder.stack.fit(X_train, X_valid, y_train, y_valid,model_path=stack_builder.stack_model_path,
@@ -225,10 +224,10 @@ def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
 if __name__ == "__main__":
 
     print("========== BUILDING STACK 1 ============\n")
-    name = "stack_50_dropout_elu"
+    name = "stack_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [50]
+    n_neurons_per_layer = [50, 50]
     unit_regularizer = [None] * len(n_neurons_per_layer)
     unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu

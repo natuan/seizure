@@ -408,6 +408,7 @@ class StackedAutoencoders:
                 
     def stack_softmax_output_layer(self,
                                    layer_name,
+                                   n_classes,
                                    kernel_regularizer = None,
                                    kernel_initializer = tf.contrib.layers.variance_scaling_initializer(),
                                    bias_initializer = tf.zeros_initializer()):
@@ -416,10 +417,10 @@ class StackedAutoencoders:
         with self.graph.as_default():
             with tf.variable_scope(layer_name):
                 weights = tf.get_variable(name="weights",
-                                          shape=(self.hidden[-1].shape[1], self.X.shape[1]),
+                                          shape=(self.hidden[-1].shape[1], n_classes),
                                           initializer=kernel_initializer)
                 biases = tf.get_variable(name="biases",
-                                         shape=(self.X.shape[1], ),
+                                         shape=(n_classes, ),
                                          initializer=bias_initializer)
                 self.outputs = tf.matmul(self.hidden[-1], weights) + biases
             with tf.variable_scope("loss"):
@@ -764,7 +765,9 @@ class StackBuilder:
                                          regularizer=stack_regularizer,
                                          input_dropout_rate=stack_input_dropout_rate,
                                          hidden_dropout_rate=stack_hidden_dropout_rate)
+            n_classes = len(set(y_train))
             self.stack.stack_softmax_output_layer(layer_name="{}_softmax_outputs".format(self.name),
+                                                  n_classes=n_classes,
                                                   kernel_regularizer=self.output_kernel_regularizer,
                                                   kernel_initializer=self.output_kernel_initializer,
                                                   bias_initializer=self.output_bias_initializer)
