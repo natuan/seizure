@@ -14,8 +14,9 @@ from Utils import *
 
 class UnitAutoencoder:
     """
-    A single autoencoder which can be either an ordinary or a denoising unit. Denoising autoencoder can be 
-    specified with Gaussian noises or dropout on the inputs.
+    An autoencoder class that can be used to learn features of the inputs by learning to reconstruct them.
+    Two types of autoencoders currently supported: ordinary and denoising autoencoders.
+    Denoising autoencoder can be specified with Gaussian noises or dropout on the inputs.
     """
     def __init__(self,
                  name,
@@ -36,11 +37,19 @@ class UnitAutoencoder:
         
         Arguments:
         - name: name of the unit
-        - n_inputs: number of inputs; also the number of neurons in the output layer
+        - n_inputs: number of inputs; also the number of neurons in the output layer.
         - n_neurons: number of neurons in the hidden layer
         - noise_stddev: standard deviation of the Gaussian noise; not used if None
-        - dropout_rate: if specified a Dropout layer will be added after the input layer; not used if None
-        - regularizer: kernel regularizers for hidden and output layers
+        - input_dropout_rate: the dropout rate of the Dropout layer put in after the input layer; not used if None.
+          If used, it serves two purposes: as an alternative to the Gaussian noises, and as a way to cope with overfitting.
+        - hidden_dropout_rate: the dropout rate of the Dropout layer put in after the input layer; not used if None
+          If used then it's part of the cure for overfitting.
+        - hidden_activation: activation functions of hidden neurons.
+        - output_activation: activation functions of output neurons.
+        - n_observable_hidden_neurons: int or real in (0,1); number or percentage of random neurons whose activities will be monitored
+        - regularizer: kernel regularizers for the hidden and output layers
+        - optimizer: optimizer used for training
+        - tf_log_dir: directory to save logging information for Tensorboard
 
         Return: None
         """
@@ -123,7 +132,7 @@ class UnitAutoencoder:
         self.stop_file_path = os.path.join(tf_log_dir, "stop")
         
     def _variable_summaries(self, var, tag):
-      """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+      """Attach summaries to a Tensor (for TensorBoard visualization)."""
       with tf.name_scope(tag):
         mean = tf.reduce_mean(var)
         tf.summary.scalar('mean', mean)
@@ -135,6 +144,9 @@ class UnitAutoencoder:
         tf.summary.histogram('histogram', var)    
 
     def save_untrained_model(self, model_path, seed = 42):
+        """
+        Simply initialize the model's params and save to file; used for experiment purposes.
+        """
         with tf.Session(graph=self.graph) as sess:
             tf.set_random_seed(seed)
             self.init.run()
@@ -145,15 +157,16 @@ class UnitAutoencoder:
         """
         Train the unit autoencoder against a training set
 
-        Params:
+        Arguments:
         - X_train: training set of shape (n_samples, n_features)
-        - X_valid: validation set
+        - X_valid: validation set (same shape with X_train)
         - n_epochs: number of epochs to train
+        - model_path: absolute path to the model file to be saved
+        - save_best_only: only save the model when the performance improves (on the validation set)
         - batch_size: batch size
-        - checkpoint_steps: number of steps to record checkpoint and logs
+        - checkpoint_steps: number of steps to record checkpoints and log information
         - seed: random seed for tf
-        - model_path: model full path file to be saved
-
+        - tf_debug: turn on to debug in TensorFlow
         """
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
@@ -202,6 +215,9 @@ class UnitAutoencoder:
             return model_step, all_steps
         
     def hidden_weights(self, file_path = None):
+        """
+        Retrieve the weights of hidden neurons. Optionally allow them to be saved to file.
+        """
         assert(self.params is not None), "Invalid self.params"
         w = self.params["{}_hidden/kernel:0".format(self.name)]
         if file_path is not None:
@@ -212,6 +228,9 @@ class UnitAutoencoder:
         return w
 
     def hidden_biases(self, file_path = None):
+        """
+        Retrieve the biases of hidden neurons. Optionally allow them to be saved to file.
+        """
         assert(self.params is not None), "Invalid self.params"
         w = self.params["{}_hidden/bias:0".format(self.name)]
         if file_path is not None:
@@ -222,14 +241,31 @@ class UnitAutoencoder:
         return w
     
     def output_weights(self):
+        """
+        Retrieve the weights of output neurons
+        """
         assert(self.params is not None), "Invalid self.params"
         return self.params["{}_output/kernel:0".format(self.name)]
 
     def output_biases(self):
+        """
+        Retrieve the biases of output neurons
+        """
         assert(self.params is not None), "Invalid self.params"
         return self.params["{}_output/bias:0".format(self.name)]
     
     def restore(self, model_path):
+        """
+        Restore the model params from model file
+
+        Arguments:
+        - model_path: full path to model file
+
+        Return: None
+        
+        Post conditions: 
+        - self.params contains trained values of params.
+        """
         if self.params is not None:
             print(">> Warning: self.params not empty and will be replaced")
         with tf.Session(graph=self.graph) as sess:
@@ -237,6 +273,16 @@ class UnitAutoencoder:
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
 
     def eval(self, X, varlist):
+        """
+        Evaluate certain tensors for a vector of inputs
+        
+        Params:
+        - X: input tensor of shape (n_examples, n_features)
+        - varlist: list of any of the following variables "loss", "reconstruction_loss", "hidden_outputs", "outputs"
+
+        Return:
+        - list of values of the variables after evaluation
+        """
         assert(self.params), "Invalid self.params"
         with tf.Session(graph=self.graph) as sess:
             varmap = {"loss": self.loss,
@@ -262,7 +308,7 @@ class UnitAutoencoder:
         """
         Restore model's params and evaluate variables
 
-        Params:
+        Arguments:
         - model_path: full path to the model file
         - varlist: list of variables to evaluate. Valid values: "loss", "reconstruction_loss", "hidden_outputs", "outputs"
 
@@ -291,16 +337,29 @@ class UnitAutoencoder:
                     vars_to_eval += [self.outputs]
             return sess.run(vars_to_eval, feed_dict={self.X: X})
 
-##################################################################################
+#####################################################################################################################
 ##
 ## StackAutoencoders class
 ##
-##################################################################################
+#####################################################################################################################
 class StackedAutoencoders:
+    """
+    The StackedAutoencoders class provides services to stack the encoders of pretrained auto-encoders, and optionally
+    also stack a softmax output layer for classification.
+    """
     def __init__(self,
                  name,
                  cache_dir = "../cache",
                  tf_log_dir = "../tf_logs"):
+        """
+        Ctor
+        Most of the properties are to be initilized during the construction of the stack
+
+        Arguments:
+        - name: name of the stack
+        - cache_dir: cache directory to store the stack model
+        - tf_log_dir: directory to store logging information for Tensorboard
+        """
         self.name = name
         self.stacked_units = []
         self.graph = None
@@ -327,6 +386,21 @@ class StackedAutoencoders:
                           regularizer,
                           input_dropout_rate,
                           hidden_dropout_rate):
+        """
+        Stack the encoder part of an auto-encoder to the top of the current stack, reusing its pretrained weights and biases.
+        
+        Arguments:
+        - input_tensor: the current input tensor on which the new layer will be put.
+        - unit: a pretrained auto-encoder
+        - layer_name: name of the new layer
+        - regularizer: regularization applied to the weights; ignored if None
+        - input_dropout_rate: the rate of the dropout layer right after the input; ignored if None
+        - hidden_dropout_rate: the rate of the dropout layer right after the new layer; ignored if None
+
+        Return: 
+        - hidden_drop: the output of the new layer, optionally with dropouts
+        - reg_loss: the regularization loss
+        """
         assert(unit.params), "Invalid unit.params"
         with tf.name_scope(layer_name):
             input_drop = input_tensor if input_dropout_rate is None else tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
@@ -347,6 +421,11 @@ class StackedAutoencoders:
                           regularizer,
                           input_dropout_rate,
                           output_dropout_rate):
+        """
+        Add an output layer of a pretrained auto-encoder to the stack.
+        This functionality plans to used for symmetrical ordinary autoencoder that aims
+        at reconstructing its inputs. Not being used so far.
+        """
         assert(unit.params), "Invalid unit.params"
         with tf.name_scope(layer_name):
             input_drop = input_tensor if input_dropout_rate is None else tf.layers.dropout(input_tensor, rate=input_dropout_rate, training=self.training)
@@ -367,6 +446,19 @@ class StackedAutoencoders:
                       regularizer = None,
                       input_dropout_rate = 0,
                       hidden_dropout_rate = 0):
+        """
+        Add the encoder part of an auto-encoder to the stack.
+        
+        Arguments:
+        - input_tensor: the current input tensor on which the new layer will be put.
+        - unit: a pretrained auto-encoder
+        - layer_name: name of the new layer
+        - regularizer: regularization applied to the weights; ignored if None
+        - input_dropout_rate: the rate of the dropout layer right after the input; ignored if None
+        - hidden_dropout_rate: the rate of the dropout layer right after the new layer; ignored if None
+
+        Return: None
+        """
         self.graph = tf.Graph() if self.graph is None else self.graph
         with self.graph.as_default():
             intput_tensor = None
@@ -390,6 +482,9 @@ class StackedAutoencoders:
                       regularizer = None,
                       input_dropout_rate = 0,
                       output_dropout_rate = 0):
+        """
+        Stack the decoder part of an auto-encoder to the stack. Not being used so far.
+        """
         self.graph = tf.Graph() if self.graph is None else self.graph
         with self.graph.as_default():
             assert(self.hidden), "Empty encoder layers"
@@ -412,6 +507,18 @@ class StackedAutoencoders:
                                    kernel_regularizer = None,
                                    kernel_initializer = tf.contrib.layers.variance_scaling_initializer(),
                                    bias_initializer = tf.zeros_initializer()):
+        """
+        Put a softmax output layer on the top of the stack for classification purposes
+
+        Arguments:
+        - layer_name: name of the layer
+        - n_classes: number of classes to classify
+        - kernel_regularizer: regularizer applied to the weights
+        - kernel_initializer: initializer for the weights
+        - bias_initializer: initializer for the biases
+        
+        Return: None
+        """
         assert(self.hidden), "Empty hidden layers"
         assert(self.graph), "Empty graph"
         with self.graph.as_default():
@@ -430,6 +537,14 @@ class StackedAutoencoders:
                 self.loss = tf.add_n([self.loss, kernel_regularizer(weights)]) if kernel_regularizer is not None else self.loss
             
     def finalize(self, optimizer):
+        """
+        Finalize the stack with other information after putting in the output layer
+
+        Argument:
+        - optimizer: the optimizer to be used
+
+        Return: None
+        """
         assert(self.graph), "Empty graph"
         with self.graph.as_default():
             with tf.variable_scope("training"):
@@ -449,13 +564,16 @@ class StackedAutoencoders:
                 self.saver = tf.train.Saver()
 
     def save(self, model_path):
+        """
+        Save the model to file
+        """
         with tf.Session(graph=self.graph) as sess:
             self.init.run()
             self.saver.save(sess, model_path)
 
     def restore(self, model_path):
         """
-        Restore model's params
+        Restore model's params from file
         """
         assert(self.graph), "Invalid graph"
         with tf.Session(graph=self.graph) as sess:
@@ -464,6 +582,24 @@ class StackedAutoencoders:
             self.params = dict([(var.name, var.eval()) for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             
     def fit(self, X_train, X_valid, y_train, y_valid, model_path, save_best_only = True, n_epochs = 1000, batch_size = 256, checkpoint_steps = 100, seed = 42, tfdebug = False):
+        """
+        Fit the stack with training data; validation set is used to approximate out-of-sample errors during training.
+
+        Arguments:
+        - X_train: features of the training set of shape (n_samples, n_features)
+        - X_valid: features of the validation set (same shape with X_train)
+        - y_train: target of the training set of shape (n_samples,)
+        - y_valid: target of the validation set
+        - model_path: absolute path to the model file to be saved
+        - save_best_only: only save the model when the performance improves (on the validation set)
+        - n_epochs: number of epochs to train
+        - batch_size: batch size
+        - checkpoint_steps: number of steps to record checkpoints and log information
+        - seed: random seed for tf
+        - tf_debug: turn on to debug in TensorFlow
+
+        Return: None
+        """
         assert(self.training_op is not None), "Invalid self.training_op"
         assert(self.X.shape[1] == X_train.shape[1]), "Invalid input shape"
         with tf.Session(graph=self.graph) as sess:
@@ -550,6 +686,8 @@ class StackedAutoencoders:
                 elif var == "accuracy":
                     assert(len(X) == len(y)), "Invalid examples and targets sizes"
                     vars_to_eval += [self.accuracy]
+                elif var == "correct_prediction":
+                    vars_to_eval += [self.correct]
             y = np.zeros((len(X), 1)) if y is None else y
             return sess.run(vars_to_eval, feed_dict={self.X: X, self.y: y})
         
