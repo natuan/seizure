@@ -312,7 +312,7 @@ if __name__ == "__main__":
     if option == "autoencoder_stack_classifier":
         autoencoder_stack_classifier()
     else:
-        stack_dir = "stack_50_50_dropout_elu"
+        stack_dir = "stack_250_250_dropout_elu"
         train_codings_csv = "train_codings_hiddenlayer2of2.csv"
         valid_codings_csv = "valid_codings_hiddenlayer2of2.csv"
         test_codings_csv = "test_codings_hiddenlayer2of2.csv"
