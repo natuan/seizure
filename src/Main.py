@@ -186,44 +186,13 @@ def performance_metric(y_true, y_predict):
     score = accuracy_score(y_true, y_predict)
     return score
 
-def predict(classifier, X_test, y_test):
-    print("Predicting...")
-    y_predict = classifier.predict(X_test)
-    accuracy = accuracy_score(y_test, y_predict)
-    fscore = fbeta_score(y_test, y_predict, beta = .5, average = 'weighted')
-    print(">> Accuracy : {}\n".format(accuracy))
-    print(">> F-score  : {}\n".format(fscore))
-    print(">> Done\n")
+def predict(classifier, X, y):
+    y_predict = classifier.predict(X)
+    accuracy = accuracy_score(y, y_predict)
+    fscore = fbeta_score(y, y_predict, beta = .5, average = 'weighted')
+    return accuracy, fscore
 
-def svm_fit_and_classify(X_train, X_test, y_train, y_test):
-    print("Searching for best params of SVM...\n")
-    cv_sets = ShuffleSplit(n_splits = 10, test_size = 0.20, random_state = 0)
-    classifier = SVC(random_state = 42)
-    params = {'C': [0.5]}
-    scoring_fnc = make_scorer(performance_metric)
-    grid = GridSearchCV(classifier, params, scoring=scoring_fnc, cv=cv_sets)
-    grid = grid.fit(X_train, y_train)
-    best = grid.best_estimator_
-    print(">> Best C value: {}\n".format(best.get_params()['C']))
-    print(">> Done\n")
-    predict(best, X_test, y_test)
-
-def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
-    print("Searching for best params of GradientBoostingClassifier...\n")
-    cv_sets = ShuffleSplit(n_splits = 10, test_size = 0.20, random_state = 0)
-    classifier = GradientBoostingClassifier()
-    params = {'max_depth': [3]}
-    scoring_fnc = make_scorer(performance_metric)
-    grid = GridSearchCV(classifier, params, scoring=scoring_fnc, cv=cv_sets)
-    grid = grid.fit(X_train, y_train)
-    best = grid.best_estimator_
-    print(">> Best max_depth value: {}\n".format(best.get_params()['max_depth']))
-    print(">> Done\n")
-    predict(best, X_test, y_test)
-    
-if __name__ == "__main__":
-
-    print("========== BUILDING STACK 1 ============\n")
+def autoencoder_stack_classifier():
     name = "stack_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
@@ -276,3 +245,85 @@ if __name__ == "__main__":
     print("Valid accuracy by stack 1: {}".format(valid_accuracy))
     test_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
     print("Test accuracy by stack 1: {}".format(test_accuracy))
+    
+def svm_classifier(X_train_codings, X_test_codings, y_train_codings, y_test_codings):
+    print("Searching for best params of SVM...\n")
+    cv_sets = ShuffleSplit(n_splits = 3, test_size = 0.2, random_state = 0)
+    classifier = SVC(random_state = 42) # 'rbf kernel'
+    C_array = np.arange(10, 100, 5) # 10, 20, ..., 100
+    gamma_array = np.arange(10, 100, 5) # 10, 20, ..., 100
+    params = {'C': C_array, 'gamma': gamma_array}
+    scoring_fnc = make_scorer(performance_metric)
+    grid = GridSearchCV(classifier, params, scoring=scoring_fnc, cv=cv_sets)
+    grid = grid.fit(X_train_codings, y_train_codings)
+    best = grid.best_estimator_
+    print(">> Best C value: {}\n".format(best.get_params()['C']))
+    print(">> Best gamma value: {}\n".format(best.get_params()['gamma']))
+    print(">> Done\n")
+
+    print("Performance on training set:")
+    train_accuracy, train_fscore = predict(best, X_train_codings, y_train_codings)
+    print(">> Accuracy : {}\n".format(train_accuracy))
+    print(">> F-score  : {}\n".format(train_fscore))
+    print(">> Done\n")
+    
+    print("Performance on test set:")
+    test_accuracy, test_fscore = predict(best, X_test_codings, y_test_codings)
+    print(">> Accuracy : {}\n".format(test_accuracy))
+    print(">> F-score  : {}\n".format(test_fscore))
+    print(">> Done\n")
+
+
+def gradient_boosting_fit_and_classify(X_train, X_test, y_train, y_test):
+    print("Searching for best params of GradientBoostingClassifier...\n")
+    cv_sets = ShuffleSplit(n_splits = 10, test_size = 0.20, random_state = 0)
+    classifier = GradientBoostingClassifier()
+    params = {'max_depth': [3]}
+    scoring_fnc = make_scorer(performance_metric)
+    grid = GridSearchCV(classifier, params, scoring=scoring_fnc, cv=cv_sets)
+    grid = grid.fit(X_train, y_train)
+    best = grid.best_estimator_
+    print(">> Best max_depth value: {}\n".format(best.get_params()['max_depth']))
+    print(">> Done\n")
+    predict(best, X_test, y_test)
+
+def load_train_test_codings(stack_dir, train_codings_csv, valid_codings_csv, test_codings_csv):
+    train_file = os.path.join(root_dir, stack_dir, train_codings_csv)
+    df = pd.DataFrame.from_csv(train_file, index_col = 0)
+    X_train_codings_1 = pd.DataFrame.as_matrix(df)
+    assert(X_train_codings_1.shape[0] == X_train.shape[0]), "Invalid X_train_codings_1"
+
+    valid_file = os.path.join(root_dir, stack_dir, valid_codings_csv)
+    df = pd.DataFrame.from_csv(valid_file, index_col = 0)
+    X_train_codings_2 = pd.DataFrame.as_matrix(df)
+    assert(X_train_codings_2.shape[0] == X_valid.shape[0]), "Invalid X_train_codings_2"
+    X_train_codings = np.vstack((X_train_codings_1, X_train_codings_2))
+
+    test_file = os.path.join(root_dir, stack_dir, test_codings_csv)
+    df = pd.DataFrame.from_csv(test_file, index_col = 0)
+    X_test_codings = pd.DataFrame.as_matrix(df)
+    assert(X_test_codings.shape[0] == X_test.shape[0]), "Invalid X_test_codings"
+    return X_train_codings, X_test_codings
+    
+if __name__ == "__main__":
+    #import pdb
+    #pdb.set_trace()
+    option = "svm_classifer"
+    if option == "autoencoder_stack_classifier":
+        autoencoder_stack_classifier()
+    else:
+        stack_dir = "stack_50_50_dropout_elu"
+        train_codings_csv = "train_codings_hiddenlayer2of2.csv"
+        valid_codings_csv = "valid_codings_hiddenlayer2of2.csv"
+        test_codings_csv = "test_codings_hiddenlayer2of2.csv"
+        X_train_codings, X_test_codings = load_train_test_codings(stack_dir, train_codings_csv, valid_codings_csv, test_codings_csv)
+        y_train_codings = np.zeros((y_train.shape[0]+y_valid.shape[0],))
+        y_train_codings[:y_train.shape[0]] = y_train
+        y_train_codings[y_train.shape[0]:] = y_valid
+        assert(y_train_codings.shape[0] == X_train_codings.shape[0]), "Mismatch rows"
+        y_test_codings = y_test
+        assert(y_test_codings.shape[0] == X_test_codings.shape[0]), "Mismatch rows"
+        if option == "svm_classifer":
+            svm_classifier(X_train_codings, X_test_codings, y_train_codings, y_test_codings)
+        elif option == "gradient_boosting_classifier":
+            raise ValueError("Not been implemented")
