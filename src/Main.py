@@ -193,10 +193,10 @@ def predict(classifier, X, y):
     return accuracy, fscore
 
 def autoencoder_stack_classifier():
-    name = "stack_50_50_dropout_elu"
+    name = "stack_50_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [50, 50]
+    n_neurons_per_layer = [50, 50, 50]
     unit_regularizer = [None] * len(n_neurons_per_layer)
     unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
@@ -308,7 +308,7 @@ def load_train_test_codings(stack_dir, train_codings_csv, valid_codings_csv, tes
 if __name__ == "__main__":
     #import pdb
     #pdb.set_trace()
-    option = "svm_classifer"
+    option = "autoencoder_stack_classifier" #"svm_classifer"
     if option == "autoencoder_stack_classifier":
         autoencoder_stack_classifier()
     else:

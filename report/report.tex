@@ -313,10 +313,18 @@ The data set~\cite{andrzejak2001indications} contains 100 channels (vectors of m
 \subsection{Implementation}
 
 \noindent
-The approach proposed in this project was implemented in Python 3 using TensorFlow library, and its source code could be found at the following link:
+The approach proposed in this project was implemented in Python 3 using TensorFlow library, and its source code could be found in the following repository:
 \begin{center}
-\href{https://github.com/natuan/ml\_nano\_capstone.git}{\textit{https://github.com/natuan/ml\_nano\_capstone.git}}.
+\href{https://github.com/natuan/seizure.git}{\textit{https://github.com/natuan/seizure/tree/master/src}}.
 \end{center}
+
+A copy of the original data set~\cite{andrzejak2001indications} can be found in folder \textbf{input}, and the training/validation/test sets can be found in folder \textbf{cache}. The main parts of the source code, located inside folder \textbf{src}, are as follows:
+
+\begin{itemize}
+\item \textbf{DataSet.py}: class \texttt{DataSet} manages the loading and processing of the data set. Its tasks include dividing the original into smaller segments and assigning them into appropriate target classes. The function \texttt{create\_data\_set\_class\_AB\_CD\_E()} could be invoked to re-generate the training, validation and test sets with customized a split ratio and random seed. (The \texttt{root\_dir} local variable in this function needs to be changed to refer to the project folder.)
+\item \textbf{StackedAutoencoders.py}: contains the classes of autoencoders, \texttt{UnitAutoencoder}, and multi-layer feed-forward neural networks, \texttt{StackedAutoencoders}, built upon them. It also includes a builder class \texttt{StackBuilder} that is used in \texttt{Main.py} to construct and train individual autoencoders before using them to build the stacks (i.e., the multi-layer feedforward neural networks).
+\item \textbf{Main.py}: the main file where experiments were configured to run. The \texttt{\_main\_} function contains code to define autoencoders and the corresponding neural networks, as well as how to fine-tune and test the network on the traininig, validation and testing sets. Before running this file (as \texttt{>> python3 Main.py}), the \texttt{root\_dir} local variable needs to point to the project folder.
+\end{itemize}
 
 In the following, I discuss at high level the key components of the implementation of autoencoders, the derived feed-forward neural network, and the elements that support for their training and testing.
 
@@ -431,16 +439,6 @@ The softmax output layer with the cross-entropy loss function can be implemented
 \end{verbatim}
 
 Finally, a training operator needs to be created to minimize the loss function, and the training can be done by running the operator given the batches of training examples, their target values and the \texttt{training} tensor set to be \texttt{True}.
-
-\vspace{5mm}
-\noindent
-\textbf{Source code organization:} A copy of the original data set~\cite{andrzejak2001indications} can be found in folder \textbf{input}, and the training/validation/test sets can be found in folder \textbf{cache}. The main parts of the source code, located inside folder \textbf{src}, are as follows:
-
-\begin{itemize}
-\item \textbf{DataSet.py}: class \texttt{DataSet} manages the loading and processing of the data set. Its tasks include dividing the original into smaller segments and assigning them into appropriate target classes. The function \texttt{create\_data\_set\_class\_AB\_CD\_E()} could be invoked to re-generate the training, validation and test sets with customized a split ratio and random seed. (The \texttt{root\_dir} local variable in this function needs to be changed to refer to the project folder.)
-\item \textbf{StackedAutoencoders.py}: contains the classes of autoencoders, \texttt{UnitAutoencoder}, and multi-layer feed-forward neural networks, \texttt{StackedAutoencoders}, built upon them. It also includes a builder class \texttt{StackBuilder} that is used in \texttt{Main.py} to construct and train individual autoencoders before using them to build the stacks (i.e., the multi-layer feedforward neural networks).
-\item \textbf{Main.py}: the main file where experiments were configured to run. The \texttt{\_main\_} function contains code to define autoencoders and the corresponding neural networks, as well as how to fine-tune and test the network on the traininig, validation and testing sets. Before running this file (as \texttt{>> python3 Main.py}), the \texttt{root\_dir} local variable needs to point to the project folder.
-\end{itemize}
 
 %% \subsection{Refinement}
 
@@ -750,9 +748,8 @@ $D_3$ & $3$ & $92.98\%$ & $88.56\%$ & $89.69\%$\\ \hline
 \textit{External comparison}: As mentioned earlier, the work by Kabir et al.~\cite{kabir2016epileptic} achieved an accuracy of $95.3\%$ on an independent test set. The best performance I could get from training various network configurations is about $90.34\%$ to $91.52\%$ (with 2-hidden layer networks of $50$ and $75$ neurons per hidden layer), which in my opinion is very encouraging for an approach that learns features automatically. One important difference between my work and the one by Kabir et al.~\cite{kabir2016epileptic} is that their approach required the original 23.6-second channels to be divided into 5.9-second segments, more than 5 times longer than those used in the present approach. Their method, which was based on computing special statistics from those 5.9-second segments, might need such long segments in order to gather enough information for classification.
 
 \section{Conclusion}
-
 \noindent
-This work presented an approach to classifying brain activitiy signals in the data set provided by ~\cite{andrzejak2001indications} into volunteer classes related to epileptic seizure disease. The proposed method and results can be summarized as follows:
+This work presented an approach to classifying brain activitiy signals in the data set provided by ~\cite{andrzejak2001indications} into volunteer classes related to epileptic seizure disease. The proposed method is motivated from the fact that despite Deep Neural Networks have been used for EED domains (including this one), and auto-encoders have been shown to work as well as DBN's building block (Restricted Boltzmann Machines) in helping deep networks be able to train, there was no previous work using auto-encoders for the data set of interest. The approach and results can be summarized as follows:
 \begin{itemize}
 \item Two types of autoencoders, traditional and denoising, were used to learn representations of the original signal segments.
 \item The encoding parts of the autoencoders were then put together to form the hidden layers of a multi-layer feed-forward neural network.
@@ -760,13 +757,7 @@ This work presented an approach to classifying brain activitiy signals in the da
 \item The performances of the network on an independet test set vary from $90.34\%$ to $91.52\%$, obtained from networks with 2 hidden layers with 50 to 70 neurons per layer. These network configurations appeared to converge with stable gaps between training and validation performances. Although this accuracy result is lower than the work by Kabir et al.~\cite{kabir2016epileptic} on the same target classes, this work used much smaller 1-second segments, making it more sensitive to be used in potential applications such as medical wearable devices.
 \end{itemize}
 
-I learned valuable lessons from this project:
-\begin{itemize}
-\item This is the first time I learned to use TensorFlow directly (instead of through Keras). I also found Tensorboard very helpful in observing the training process.
-\item I learned to recognize when the network appeared to overfit to the training data set. I also learned how to first test the capacity of the network (by not putting in any dropout rates), and then how to cope with overfitting.
-\end{itemize}
-
-Due to my limited time, there are still items that I proposed but have not completed, and are worth further investigation. Future work include: 
+Future work include the following:
 \begin{itemize}
 \item consider using other types of autoencoders such as sparse autoencoders~\cite{boureau2008sparse} and variational autoencoders~\cite{kingma2013auto} for this data set;
 \item consider using other classifiers such as Decision Trees, K-Kearest Neighbors, Support Vector Machines and Boosting with the representations learned by the sequence of autoencoders;
