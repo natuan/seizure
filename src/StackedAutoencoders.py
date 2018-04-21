@@ -737,7 +737,7 @@ class StackBuilder:
                  output_kernel_regularizer = None,
                  output_kernel_initializer = tf.contrib.layers.variance_scaling_initializer(),
                  output_bias_initializer = tf.zeros_initializer(),
-                 adam_lr = 5*1e-6,
+                 optimizer = tf.train.AdamOptimizer(5*1e-6),
                  cache_dir = "../cache",
                  tf_log_dir = "../tf_logs"):
         """
@@ -780,7 +780,7 @@ class StackBuilder:
         self.output_kernel_regularizer = output_kernel_regularizer
         self.output_kernel_initializer = output_kernel_initializer
         self.output_bias_initializer = output_bias_initializer
-        self.adam_lr = adam_lr 
+        self.optimizer = optimizer
         self.cache_dir = cache_dir
         self.tf_log_dir = tf_log_dir
         self.stack_cache_dir = os.path.join(self.cache_dir, "stack")
@@ -843,7 +843,7 @@ class StackBuilder:
                                    hidden_activation = self.unit_hidden_activations,
                                    output_activation = self.unit_output_activations,
                                    n_observable_hidden_neurons = n_observable_hidden_neurons_per_layer,
-                                   optimizer = tf.train.AdamOptimizer(self.adam_lr),
+                                   optimizer = self.optimizer,
                                    tf_log_dir = unit_tf_log_dir)
             
             # Try to reuse trained model if specified
@@ -918,7 +918,7 @@ class StackBuilder:
             for idx, unit in enumerate(reversed(self.units)):
                 is_reconstruction_layer = (idx == len(self.units) - 1)
                 self.stack.stack_decoder(unit, stack_decoder_layer_names[idx], is_reconstruction_layer=is_reconstruction_layer)
-        self.stack.finalize(optimizer=tf.train.AdamOptimizer(self.adam_lr))
+        self.stack.finalize(optimizer=self.optimizer)
         print(">> Done\n")
         if (not restore_stack_model):
             print("Saving stack model to {}...\n".format(self.stack_model_path))

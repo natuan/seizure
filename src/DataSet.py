@@ -248,7 +248,7 @@ class DataSet:
         y = pd.DataFrame.as_matrix(df["target_class"])
         print(">> Done\n")
         return X, y
-        
+  
 def min_max_scale(X, signal_range, scaling_range = (0,1)):
     signal_min, signal_max = signal_range
     signal_delta = signal_max - signal_min

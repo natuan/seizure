@@ -3,6 +3,7 @@ import os
 import sys
 import pandas as pd
 import tensorflow as tf
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.metrics import make_scorer, accuracy_score, fbeta_score
 from sklearn.svm import SVC
@@ -30,11 +31,10 @@ X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache
 X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TEST.csv".format(ratio)))
 
 # Scaling the train, valid and test sets
-signal_range = (np.amin(X_train), np.amax(X_train))
-scaling_range = (-1, 1)
-X_train_scaled = min_max_scale(X_train, signal_range, scaling_range)
-X_valid_scaled = min_max_scale(X_valid, signal_range, scaling_range)
-X_test_scaled = min_max_scale(X_test, signal_range, scaling_range)
+scaler = StandardScaler().fit(X_train)
+X_train_scaled = scaler.fit(X_train)
+X_valid_scaled = scaler.fit(X_valid)
+X_test_scaled = scaler.fit(X_test)
 
 # Initialize coded train, validation and test sets
 X_train_codings = None
@@ -42,8 +42,8 @@ X_valid_codings = None
 X_test_codings = None
 
 # The optimizer
-adam_lr = 5 * 1e-6
-optimizer = tf.train.AdamOptimizer(adam_lr)
+adam_lr = 9 * 1e-6
+adam_optimizer = tf.train.AdamOptimizer(adam_lr)
 
 ############################################################################
 def build_and_train_units():
@@ -128,6 +128,7 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
                                  stack_regularizer=stack_regularizer,
                                  stack_input_dropout_rate=stack_input_dropout_rate,
                                  stack_hidden_dropout_rate=stack_hidden_dropout_rate,
+                                 optimizer = adam_optimizer,
                                  cache_dir=cache_dir,
                                  tf_log_dir=tf_log_dir)
 
@@ -171,7 +172,7 @@ def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid
     checkpoint_steps = 5*n_batches
     seed = 0
     print("Fine tuning...\n")
-    model_step, all_steps = stack_builder.stack.fit(X_train, X_valid, y_train, y_valid,model_path=stack_builder.stack_model_path,
+    model_step, all_steps = stack_builder.get_stack().fit(X_train, X_valid, y_train, y_valid,model_path=stack_builder.stack_model_path,
                                                     n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
     print(">> Done\n")
     print(">> Best model saved at step {} out of {} total steps\n".format(model_step, all_steps))
@@ -193,10 +194,10 @@ def predict(classifier, X, y):
     return accuracy, fscore
 
 def autoencoder_stack_classifier():
-    name = "stack_50_50_50_dropout_elu"
+    name = "stack_50_50_dropout_elu"
     preceding_units=[]
     preceding_unit_model_paths = []
-    n_neurons_per_layer = [50, 50, 50]
+    n_neurons_per_layer = [50, 50]
     unit_regularizer = [None] * len(n_neurons_per_layer)
     unit_noise_stddev = [None] * len(n_neurons_per_layer)
     unit_hidden_activations = tf.nn.elu
