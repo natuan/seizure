@@ -3,7 +3,8 @@ import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import StratifiedShuffleSplit
 
 class DataSet:
@@ -248,6 +249,27 @@ class DataSet:
         y = pd.DataFrame.as_matrix(df["target_class"])
         print(">> Done\n")
         return X, y
+
+    def load_and_preprocess(self, train_file_path, valid_file_path, test_file_path, whiten=False):
+        X_train, y_train = self.load_features_and_target(train_file_path)
+        X_valid, y_valid = self.load_features_and_target(valid_file_path)
+        X_test, y_test = self.load_features_and_target(test_file_path)
+        # Making sure the data is zero-mean and unit-variance
+        scaler = StandardScaler().fit(X_train)
+        X_train_scaled = scaler.transform(X_train)
+        X_valid_scaled = scaler.transform(X_valid)
+        X_test_scaled = scaler.transform(X_test)
+        if whiten:
+            # Making sure uncorrelated between features
+            pca = PCA(whiten=True).fit(X_train_scaled)
+            X_train_preprocessed = pca.transform(X_train_scaled)
+            X_valid_preprocessed = pca.transform(X_valid_scaled)
+            X_test_preprocessed = pca.transform(X_test_scaled)
+        else:
+            X_train_preprocessed = X_train_scaled
+            X_valid_preprocessed = X_valid_scaled
+            X_test_preprocessed = X_test_scaled
+        return X_train_preprocessed, X_valid_preprocessed, X_test_preprocessed, y_train, y_valid, y_test
   
 def min_max_scale(X, signal_range, scaling_range = (0,1)):
     signal_min, signal_max = signal_range

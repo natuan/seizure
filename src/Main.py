@@ -3,7 +3,6 @@ import os
 import sys
 import pandas as pd
 import tensorflow as tf
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.metrics import make_scorer, accuracy_score, fbeta_score
 from sklearn.svm import SVC
@@ -25,24 +24,19 @@ data_set = DataSet(input_dir=os.path.join(root_dir, "input"),
 
 # Load train, validation and test sets
 ratio = 0.2
-
-X_train, y_train = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TRAIN.csv".format(ratio)))
-X_valid, y_valid = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_VALID.csv".format(ratio)))
-X_test, y_test = data_set.load_features_and_target(os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TEST.csv".format(ratio)))
-
-# Scaling the train, valid and test sets
-scaler = StandardScaler().fit(X_train)
-X_train_scaled = scaler.fit(X_train)
-X_valid_scaled = scaler.fit(X_valid)
-X_test_scaled = scaler.fit(X_test)
-
+train_file_path = os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TRAIN.csv".format(ratio))
+valid_file_path = os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_VALID.csv".format(ratio))
+test_file_path = os.path.join(data_set.cache_dir, "segment_numseg23_target@AB@CD@E@_ratio{}_rand25_TEST.csv".format(ratio))
+X_train_preprocessed, X_valid_preprocessed, X_test_preprocessed, y_train, y_valid, y_test = data_set.load_and_preprocess(train_file_path,
+                                                                                                                         valid_file_path,
+                                                                                                                         test_file_path, whiten = False)
 # Initialize coded train, validation and test sets
 X_train_codings = None
 X_valid_codings = None
 X_test_codings = None
 
 # The optimizer
-adam_lr = 9 * 1e-6
+adam_lr = 9*1e-6
 adam_optimizer = tf.train.AdamOptimizer(adam_lr)
 
 ############################################################################
@@ -135,15 +129,15 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
     # Training configuration
     n_epochs = 100000
     batch_size = 64
-    n_batches = len(X_train_scaled) // batch_size
+    n_batches = len(X_train_preprocessed) // batch_size
     checkpoint_steps = 5*n_batches 
     seed = 0
-    n_observable_hidden_neurons_per_layer = 50
+    n_observable_hidden_neurons_per_layer = 10
     n_hidden_neurons_to_plot = 0.5
     n_reconstructed_examples_per_class_to_plot = 50
 
-    stack_builder.build_pretrained_stack(X_train_scaled,
-                                         X_valid_scaled,
+    stack_builder.build_pretrained_stack(X_train_preprocessed,
+                                         X_valid_preprocessed,
                                          y_train,
                                          ordinary_stack=ordinary_stack,
                                          n_observable_hidden_neurons_per_layer=n_observable_hidden_neurons_per_layer,
@@ -160,19 +154,19 @@ def build_pretrained_stack(name, force_rename=False, ordinary_stack = False,
         valid_file_path = os.path.join(cache_dir, "valid_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
         test_file_path = os.path.join(cache_dir, "test_codings_hiddenlayer{}of{}.csv".format(hidden_layer+1, stack_builder.n_hidden_layers))
         stack = stack_builder.get_stack()
-        stack.get_codings(stack_builder.stack_model_path, X_train_scaled, file_path=train_file_path)
-        stack.get_codings(stack_builder.stack_model_path, X_valid_scaled, file_path=valid_file_path)
-        stack.get_codings(stack_builder.stack_model_path, X_test_scaled, file_path=test_file_path)
+        stack.get_codings(stack_builder.stack_model_path, X_train_preprocessed, file_path=train_file_path)
+        stack.get_codings(stack_builder.stack_model_path, X_valid_preprocessed, file_path=valid_file_path)
+        stack.get_codings(stack_builder.stack_model_path, X_test_preprocessed, file_path=test_file_path)
     return stack_builder
 
-def fine_tune_pretrained_stack(stack_builder, X_train, X_valid, y_train, y_valid):
+def fine_tune_pretrained_stack(stack_builder):
     n_epochs = 300000
     batch_size = 64
-    n_batches = len(X_train_scaled) // batch_size
+    n_batches = len(X_train_preprocessed) // batch_size
     checkpoint_steps = 5*n_batches
     seed = 0
     print("Fine tuning...\n")
-    model_step, all_steps = stack_builder.get_stack().fit(X_train, X_valid, y_train, y_valid,model_path=stack_builder.stack_model_path,
+    model_step, all_steps = stack_builder.get_stack().fit(X_train_preprocessed, X_valid_preprocessed, y_train, y_valid,model_path=stack_builder.stack_model_path,
                                                     n_epochs=n_epochs, batch_size=batch_size, checkpoint_steps=checkpoint_steps, seed=seed)
     print(">> Done\n")
     print(">> Best model saved at step {} out of {} total steps\n".format(model_step, all_steps))
@@ -226,7 +220,7 @@ def autoencoder_stack_classifier():
     print("End: Build pretrained stack 1\n")
     
     print("Start: Fine tuning the pretrained stack...\n")
-    fine_tune_pretrained_stack(stack_builder_1, X_train, X_valid, y_train, y_valid)
+    fine_tune_pretrained_stack(stack_builder_1)
     print("End: Fine tuning the pretrained stack 1\n")   
     stack_1 = stack_builder_1.get_stack()
     
@@ -240,11 +234,11 @@ def autoencoder_stack_classifier():
                 print(">> Values at key {} == biases of unit {}\n".format(k, idx))
     print("End: Checking stack weights before learning\n")    
         
-    train_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_train, y=y_train, varlist = ["accuracy"])
+    train_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_train_preprocessed, y=y_train, varlist = ["accuracy"])
     print("Train accuracy by stack 1: {}".format(train_accuracy))
-    valid_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_valid, y=y_valid, varlist = ["accuracy"])
+    valid_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_valid_preprocessed, y=y_valid, varlist = ["accuracy"])
     print("Valid accuracy by stack 1: {}".format(valid_accuracy))
-    test_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test, y=y_test, varlist = ["accuracy"])
+    test_accuracy = stack_1.restore_and_eval(model_path=stack_builder_1.stack_model_path, X=X_test_preprocessed, y=y_test, varlist = ["accuracy"])
     print("Test accuracy by stack 1: {}".format(test_accuracy))
     
 def svm_classifier(X_train_codings, X_test_codings, y_train_codings, y_test_codings):
@@ -307,8 +301,6 @@ def load_train_test_codings(stack_dir, train_codings_csv, valid_codings_csv, tes
     return X_train_codings, X_test_codings
     
 if __name__ == "__main__":
-    #import pdb
-    #pdb.set_trace()
     option = "autoencoder_stack_classifier" #"svm_classifer"
     if option == "autoencoder_stack_classifier":
         autoencoder_stack_classifier()
